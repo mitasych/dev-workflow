@@ -1,0 +1,13 @@
+{
+  "name": "dev-workflow",
+  "displayName": "Development Workflow",
+  "version": "1.2.1",
+  "description": "Structured, multi-step development workflow: clarify → plan → implement → test → review → document → release, with an optional TDD (red → green → refactor) path. Each step is an explicit /workflow-* skill; steps share state via .workflow/current-issue.md in the working project.",
+  "author": {
+    "name": "Aleksandr Mitasov",
+    "email": "mitasych@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": ["workflow", "tdd", "planning", "code-review", "release"],
+  "skills": "./skills/"
+}
