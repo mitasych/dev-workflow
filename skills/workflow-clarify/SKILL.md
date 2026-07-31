@@ -18,14 +18,31 @@ $ARGUMENTS
 
 ## Instructions
 
-### 1. Parse the input
+### 1. Handle an existing scratchpad
+
+Before anything else, check whether `.workflow/current-issue.md` already exists.
+
+If it does, read its `**Source**` and `# Issue:` lines and ask the user:
+
+`.workflow/current-issue.md already holds <SOURCE> — "<title>". Archive it as .workflow/<KEY>-issue.md before starting? (yes / no, overwrite)`
+
+- **Archive** → `git mv`/`mv` it to `.workflow/<KEY>-issue.md`, where `<KEY>` is the ticket
+  key from `**Source**`. If `**Source**` is a manual description (no `[A-Z]{2,}-\d+` key),
+  use a short kebab-case slug of the issue title instead. If that target already exists,
+  append `-2`, `-3`, … rather than clobbering it.
+- **Overwrite** → proceed; the old content is lost.
+
+Never archive or overwrite without an answer. If the file does not exist, skip this step
+silently.
+
+### 2. Parse the input
 
 The input may contain:
 
 - **Issue**: a text description, or a Jira ticket key (e.g. `PROJ-123`)
 - **Optional `--source`**: one or more additional context sources, separated by commas or repeated flags
 
-### 2. Gather source material
+### 3. Gather source material
 
 **Issue source:**
 
