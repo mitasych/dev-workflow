@@ -91,6 +91,11 @@ Use /workflow-status at any point to see where you are.
                       until you can explain it (problem, solution,
                       impact). Writes .workflow/learning.md.
                       Run any time after /workflow-implement.
+  /workflow-jira-report [<JIRA-KEY>] [--dry-run]
+                      Post a brief report on the completed work as
+                      a Jira comment. Defaults to the ticket from
+                      the scratchpad when Source type is jira;
+                      otherwise asks. Always confirms before posting.
   /workflow-help      This help message
 
 ──────────────────────────────────────────────────
@@ -142,6 +147,10 @@ Use /workflow-status at any point to see where you are.
     (Task-ID prefix) or /workflow-commit-dev (version + dev tag);
     /workflow-release handles the final versioned release.
 
+  • After /workflow-review (or /workflow-release), use
+    /workflow-jira-report to push a short status comment back
+    to the Jira ticket; --dry-run previews it first.
+
 Run /workflow-help <step> for detailed help on any step.
 E.g: /workflow-help clarify
 ```
@@ -176,6 +185,7 @@ Use the table below as the source of truth:
 | `release` | Version bump, tag, push | scratchpad + CHANGELOG | `## Release` | Sonnet | — |
 | `status` | Show progress, suggest next step | scratchpad | _(read-only)_ | Sonnet | — |
 | `learn` | Verify understanding via Socratic teach-back | scratchpad + diff | `.workflow/learning.md` | **Opus** | — |
+| `jira-report` | Post a brief work report as a Jira comment (`/workflow-jira-report`) | scratchpad + git log/diff | `## Jira Report` _(+ Jira comment)_ | Sonnet | — |
 | `commit` | Stage + Task-ID-prefixed commit (`/workflow-commit`) | branch + staged diff | _(git commit)_ | Sonnet | — |
 | `commit-dev` | Version-file commit + dev/RC tag (`/workflow-commit-dev`) | `.version` + staged diff | _(git commit + tag)_ | Sonnet | — |
 | `learn-code` | Teach any file, module, commit, or range Socratically | codebase + history (not scratchpad) | _(none; in-conversation checklist)_ | **Opus** | — |

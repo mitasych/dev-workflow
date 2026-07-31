@@ -30,6 +30,8 @@ The input may contain:
 **Issue source:**
 
 - **Jira ticket key** → Fetch the ticket details using available Jira/Atlassian MCP tools (title, description, comments, linked issues)
+  - If the fetch **succeeds**, note that the issue is Jira-sourced — it sets `**Source type**: jira` in the output.
+  - If no Jira/Atlassian MCP tool is available, the fetch fails, or it returns no ticket, say so explicitly, treat the key as a plain label, and continue with `**Source type**: manual`. Never mark it `jira` on the strength of the key's *format* alone.
 - **Text description** → Use it directly as the issue statement
 
 **Additional sources (if `--source` is provided):**
@@ -66,6 +68,7 @@ Save the analysis to `.workflow/current-issue.md` in the following format:
 # Issue: <short title>
 
 **Source**: <Jira ticket key or "manual description">
+**Source type**: <"jira" only if ticket content was actually retrieved from Jira; otherwise "manual">
 **Additional context**: <list of --source references, or "none">
 **Date**: <current date>
 **Status**: Clarified — awaiting planning
