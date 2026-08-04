@@ -68,10 +68,10 @@ Check each category and assess whether the changes impact it:
 
 #### d) Inline code documentation
 
-- Complex logic that needs explaining?
+- Insert inline documentation solely when the implementation is not self-explanatory from the source code. Comments must be maximally concise while preserving complete semantic integrity.
 - Public API methods that need docblocks?
 - Non-obvious design decisions worth a brief comment?
-- Do NOT over-comment — only where it genuinely helps the next developer
+- Do NOT over-comment, and remove existing comments that merely restate the code
 
 #### e) Architecture Decision Records (ADRs)
 

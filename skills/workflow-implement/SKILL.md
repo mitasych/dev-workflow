@@ -48,6 +48,7 @@ Write the code. Follow these rules strictly:
 - **Minimal changes** — Touch only the files listed in the step. Avoid unrelated modifications.
 - **Match project conventions** — Follow the existing code style, naming patterns, directory structure, and framework idioms found in the project.
 - **No dead code** — Don't leave commented-out code, TODOs, or placeholder logic unless the plan explicitly calls for it.
+- **Inline documentation** — Insert comments solely when the implementation is not self-explanatory from the source code. Comments must be maximally concise while preserving complete semantic integrity.
 
 #### c) Verify
 

@@ -53,6 +53,7 @@ This is the core discipline of the Green phase:
 - Do NOT extract abstractions or create helper methods preemptively
 - Hard-coded values are acceptable if they satisfy the tests
 - It's OK if the code looks ugly — `/refactor` handles that next
+- Insert comments solely when the implementation is not self-explanatory from the source code. Comments must be maximally concise while preserving complete semantic integrity.
 
 #### c) Run the tests
 

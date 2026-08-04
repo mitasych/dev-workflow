@@ -80,7 +80,7 @@ Apply the idioms of the project's actual language and framework. Common stacks (
 #### f) Maintainability
 
 - Clear naming (variables, methods, classes)
-- Appropriate code comments (complex logic only, not obvious code)
+- Inline documentation present solely where the implementation is not self-explanatory, maximally concise, and semantically complete
 - Reasonable method/function length
 - No unnecessary complexity
 

@@ -75,7 +75,8 @@ Note the refactoring as complete before moving to the next.
 - Improve readability and structure of the code changed in this issue
 - Align with existing project conventions and patterns
 - Extract meaningful abstractions that emerged from the implementation
-- Improve type hints, return types, docblocks where they add clarity
+- Improve type hints, return types, and docblocks where they add clarity
+- Keep inline documentation solely where the implementation is not self-explanatory from the source code; comments must be maximally concise while preserving complete semantic integrity — delete comments that a rename or extraction has made redundant
 
 **Don't:**
 

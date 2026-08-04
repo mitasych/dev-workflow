@@ -54,6 +54,7 @@ For each test:
 - Test the **behavior**, not the implementation details
 - Include both positive cases (it works) and negative cases (it fails gracefully)
 - Cover the edge cases identified in the clarification
+- Insert comments solely when the test's intent is not self-explanatory from the source code. Comments must be maximally concise while preserving complete semantic integrity.
 
 #### c) Avoid common test pitfalls
 

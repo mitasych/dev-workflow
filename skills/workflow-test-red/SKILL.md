@@ -55,6 +55,7 @@ State which behavior/cycle you're writing tests for and what the tests will asse
 - Use descriptive test method names that read as specifications (e.g., `testUploadRejectsFilesLargerThan10Mb`, `TestRateLimiterBlocksAfterThreshold`)
 - Include both the happy path and the edge cases specified in the plan
 - Set up only the minimal fixtures/mocks needed
+- Insert comments solely when the test's intent is not self-explanatory from the source code (e.g. a non-obvious fixture or a subtle edge case). Comments must be maximally concise while preserving complete semantic integrity.
 
 #### c) Verify the test fails
 
