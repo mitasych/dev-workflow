@@ -46,7 +46,9 @@ Use /workflow-status at any point to see where you are.
 
   Step 1  /workflow-clarify <issue or JIRA-KEY>
           Scope the problem, define acceptance criteria,
-          identify affected components, surface open questions.
+          identify affected components, surface open questions,
+          then optionally cut a working branch from a
+          freshly-updated base.
 
   Step 2  /workflow-plan [--source <path|url>]
           Produce an ordered implementation plan.
@@ -128,7 +130,8 @@ Use /workflow-status at any point to see where you are.
 ──────────────────────────────────────────────────
 
   • Always start with /workflow-clarify — it seeds the
-    scratchpad used by every subsequent step.
+    scratchpad used by every subsequent step, and can
+    cut your working branch from an up-to-date base.
 
   • /workflow-plan activates Plan mode (read-only).
     Exit Plan mode before running /workflow-implement.

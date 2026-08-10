@@ -21,7 +21,7 @@ To confirm it loaded: `/plugin` → look for `dev-workflow@skills-dir`, or just 
 ### Regular path
 | Step | Command | Purpose |
 |------|---------|---------|
-| 1 | `/workflow-clarify <issue \| JIRA-KEY> [--source <path\|url>]` | Scope the problem, define acceptance criteria |
+| 1 | `/workflow-clarify <issue \| JIRA-KEY> [--source <path\|url>]` | Scope the problem, define acceptance criteria, optionally cut a working branch |
 | 2 | `/workflow-plan [--tdd] [--source ...]` | Produce an ordered implementation plan |
 | 3 | `/workflow-implement` | Execute the plan step by step |
 | 4 | `/workflow-test` | Run the test suite |

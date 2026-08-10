@@ -1,6 +1,6 @@
 ---
 name: workflow-clarify
-description: "Workflow Step 1: Clarify & scope an issue before planning or implementation"
+description: "Workflow Step 1: Clarify & scope an issue before planning or implementation, then optionally cut a working branch from an up-to-date base"
 argument-hint: "<issue description or Jira ticket key> [--source <obsidian note path | file path | URL>]"
 model: sonnet
 disable-model-invocation: true
@@ -88,6 +88,8 @@ Save the analysis to `.workflow/current-issue.md` in the following format:
 **Source type**: <"jira" only if ticket content was actually retrieved from Jira; otherwise "manual">
 **Additional context**: <list of --source references, or "none">
 **Date**: <current date>
+**Branch**: <branch created for this task, or the branch already checked out>
+**Base branch**: <branch it was cut from, or "n/a">
 **Status**: Clarified — awaiting planning
 
 ## Problem Statement
@@ -118,8 +120,128 @@ Save the analysis to `.workflow/current-issue.md` in the following format:
 - (none if everything is clear)
 ```
 
-After saving, display a summary and highlight any **open questions** that need to be resolved before moving to the planning step (`/workflow-plan`).
-
 Create a `.gitignore` file within the `.workflow` directory containing a single line `*`, if such a file does not already exist.
+
+Fill `**Branch**` with the branch currently checked out — the branching step below updates it if a new branch gets created.
+
+## Create a working branch
+
+The scratchpad is saved, but the developer still has to decide where this work will live.
+This is the right moment to settle it: the key and title are fresh, and it is the last point
+before implementation where cutting from a stale base is still free to fix. Once there are
+commits on a branch that started from a week-old `develop`, the conflicts are already baked in.
+
+Skip this whole section, with a one-line note, if the project is not a git repository.
+
+### 1. Ask first
+
+Nothing here — no fetch, no switch, no stash — happens before an explicit yes:
+
+`Create a new branch for this task? (yes / no)`
+
+Declining is a normal answer, not a failure: the developer may already be on the right branch,
+or may not want one yet. Leave git untouched and record the branch currently checked out.
+
+Make the offer regardless of where the issue came from. A `manual` source type means there is
+no ticket key yet, not that the work deserves no branch of its own — section 2 covers how an
+untracked issue gets named.
+
+Skip the offer entirely if HEAD is already on a branch carrying this issue's key — someone who
+ran `git switch -c DW-1_...` before clarifying does not need to be asked to do it again. Say so
+and record that branch.
+
+### 2. Propose a name
+
+Read the convention off the repo rather than imposing one:
+
+```bash
+git branch -a --format='%(refname:short)'
+```
+
+Check which of `feature/`, `bugfix/`, `fix/`, `hotfix/`, `release/`, `chore/` already appear.
+Offer the full list either way — a repo that has not needed a `hotfix/` yet still allows one —
+but rank the prefixes already in use first, and always include an unprefixed option. Take any
+name the developer types verbatim.
+
+The body of the name is the issue key, an underscore, then the title slugified — lowercase,
+runs of non-alphanumerics collapsed to single hyphens:
+
+    feature/DW-1_workflow-clarify-and-new-branch-creating
+    DW-1_workflow-clarify-and-new-branch-creating          (unprefixed)
+
+The key leads for a concrete reason: `/workflow-commit` recovers the Task ID by matching
+`[A-Z]{2,}-\d+` against the branch name and prefixes every commit message with it. A `feature/`
+prefix is harmless to that match; losing the key is not — every commit on the branch silently
+ships without its Task ID.
+
+When the issue arrived without a key, ask for one here rather than assuming there isn't one —
+developers often know the ticket number even when the description they pasted never mentioned
+it. If they supply one, treat it as the key. If they don't, propose the branch built from the
+bare slug and mention once that commits on it will carry no Task ID prefix. An untracked issue
+is still worth branching for; it just loses that one piece of automation.
+
+### 3. Confirm the donor branch
+
+Offer `develop`, when it exists locally or as `origin/develop`, and the current branch. If
+neither is right — which includes the very common case of a repo with no `develop` — ask which
+branch to cut from, suggesting the remote default as a starting point:
+
+```bash
+git symbolic-ref --short refs/remotes/origin/HEAD
+```
+
+Confirm rather than assume. A branch cut from the wrong base looks completely normal until
+merge time, which is the most expensive moment to discover it.
+
+### 4. Refresh the donor before cutting
+
+This is the part the issue is actually about — the branch has to start from what the remote has
+now, not from whatever was fetched days ago:
+
+```bash
+git fetch origin
+git fetch origin <base>:<base>    # fast-forwards the local ref without checking it out
+```
+
+Updating the ref instead of switching to it means a dirty working tree never blocks the refresh,
+and there is no branch-switching round trip. When the base is the branch already checked out, git
+refuses that refspec form — use `git pull --ff-only` there.
+
+Both forms refuse to create a merge commit. If either fails, the local base has diverged from the
+remote: report what happened and ask whether to cut from the stale base anyway or stop and sort
+the divergence out first. The same applies when there is no remote, the host is unreachable, or
+the fetch fails for any other reason — say why, then ask. Quietly branching from an unverified
+base is the exact failure this step exists to prevent.
+
+### 5. Handle uncommitted changes
+
+If the working tree is dirty, show what is in it:
+
+```bash
+git status --short
+```
+
+Then ask how to proceed: stash → branch → pop, commit first (stopping here), or skip branch
+creation. Do not stash on the developer's behalf — a `git stash pop` that conflicts drops them
+into a conflicted tree they never asked for, in the middle of a step they thought was about
+scoping a ticket.
+
+### 6. Create it and record it
+
+```bash
+git switch -c <name> <base>
+```
+
+If the name already exists locally or on the remote, report the collision and ask — different
+name, switch to the existing branch, or stop. Never force-move a branch someone else may be using.
+
+Then update the `**Branch**` and `**Base branch**` fields in `.workflow/current-issue.md` so
+`/workflow-plan` and `/workflow-commit` inherit the context instead of re-deriving it.
+
+## Wrap up
+
+Display a summary: the restated problem, the acceptance criteria, and — when a branch was
+created — its name and the base it was cut from. Highlight any **open questions** that need
+resolving before moving to the planning step.
 
 If there are no open questions and everything is clear, suggest proceeding to `/workflow-plan`.
