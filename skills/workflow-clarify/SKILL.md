@@ -133,35 +133,70 @@ commits on a branch that started from a week-old `develop`, the conflicts are al
 
 Skip this whole section, with a one-line note, if the project is not a git repository.
 
-### 1. Ask first
+### 1. Ask first — one question, nothing else
 
-Nothing here — no fetch, no switch, no stash — happens before an explicit yes:
+This is the only question in this section asked every time, and it is strictly binary. Ask it on
+its own, before any name or base has been considered:
 
-`Create a new branch for this task? (yes / no)`
+`Do you want to create a new branch for this task? (yes / no)`
 
-Declining is a normal answer, not a failure: the developer may already be on the right branch,
-or may not want one yet. Leave git untouched and record the branch currently checked out.
+**No** → skip the entire rest of this section. No fetch, no switch, no stash, no follow-up
+questions. Record the branch currently checked out as `**Branch**` and go to the wrap-up.
 
-Make the offer regardless of where the issue came from. A `manual` source type means there is
-no ticket key yet, not that the work deserves no branch of its own — section 2 covers how an
-untracked issue gets named.
+**Yes** → work through 2–4 below.
 
-Skip the offer entirely if HEAD is already on a branch carrying this issue's key — someone who
-ran `git switch -c DW-1_...` before clarifying does not need to be asked to do it again. Say so
-and record that branch.
+Keep this gate separate from everything that follows. The failure worth avoiding is folding it
+into the base-branch choice and presenting something like "stay on current / create feature/x" —
+that merges two unrelated decisions and hides most of the real options. Whether to branch is one
+question; what to branch *from* is a different one, asked only after the answer is yes.
 
-### 2. Propose a name
+Ask regardless of where the issue came from: a `manual` source type means there is no ticket key
+yet, not that the work deserves no branch of its own.
 
-Read the convention off the repo rather than imposing one:
+One case deserves a recommendation rather than a neutral ask — when HEAD is already on a branch
+carrying this issue's key (someone ran `git switch -c DW-1_...` before clarifying). Point that
+out and suggest staying, but still let them answer.
+
+### 2. Choose the base branch
+
+Present the real candidates as an explicit list, not a fallback chain. Every one of these that
+exists belongs in it:
+
+1. **`develop`** — whenever it exists locally or as `origin/develop`. Always list it; on
+   gitflow-style repos it is nearly always the right answer.
+2. **The current branch** — always list it, whatever it is. Stacking a task branch on work in
+   progress is common and legitimate.
+3. **The remote default** — `main`/`master`, when not already covered above:
+   ```bash
+   git symbolic-ref --short refs/remotes/origin/HEAD
+   ```
+4. **Something else** — let them type a branch name.
+
+Listing the current branch here means "cut the new branch from it". It is not an offer to stay on
+it — that was already settled in step 1.
+
+Recommend one, but let the developer pick. A branch cut from the wrong base looks completely
+normal until merge time, which is the most expensive moment to discover it.
+
+### 3. Propose a name
+
+Read the convention off the repo first:
 
 ```bash
 git branch -a --format='%(refname:short)'
 ```
 
-Check which of `feature/`, `bugfix/`, `fix/`, `hotfix/`, `release/`, `chore/` already appear.
-Offer the full list either way — a repo that has not needed a `hotfix/` yet still allows one —
-but rank the prefixes already in use first, and always include an unprefixed option. Take any
-name the developer types verbatim.
+Two signals decide the prefix, in this order:
+
+- **What the repo already uses.** If `feature/` and `chore/` appear in that output and nothing
+  else does, those are the house style — put them first.
+- **What kind of task this is**, from the problem statement you just wrote: `feature/` for new
+  capability, `bugfix/` or `fix/` for defects, `hotfix/` for something urgent against production,
+  `chore/` for maintenance and tooling, `release/` for release prep.
+
+Recommend the prefix where both signals agree, list the others (including any of the six the repo
+has not used yet — a repo that has never needed a `hotfix/` still allows one), and always include
+an unprefixed option. Take any name the developer types verbatim.
 
 The body of the name is the issue key, an underscore, then the title slugified — lowercase,
 runs of non-alphanumerics collapsed to single hyphens:
@@ -180,20 +215,7 @@ it. If they supply one, treat it as the key. If they don't, propose the branch b
 bare slug and mention once that commits on it will carry no Task ID prefix. An untracked issue
 is still worth branching for; it just loses that one piece of automation.
 
-### 3. Confirm the donor branch
-
-Offer `develop`, when it exists locally or as `origin/develop`, and the current branch. If
-neither is right — which includes the very common case of a repo with no `develop` — ask which
-branch to cut from, suggesting the remote default as a starting point:
-
-```bash
-git symbolic-ref --short refs/remotes/origin/HEAD
-```
-
-Confirm rather than assume. A branch cut from the wrong base looks completely normal until
-merge time, which is the most expensive moment to discover it.
-
-### 4. Refresh the donor before cutting
+### 4. Refresh the base before cutting
 
 This is the part the issue is actually about — the branch has to start from what the remote has
 now, not from whatever was fetched days ago:
