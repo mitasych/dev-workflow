@@ -1,6 +1,6 @@
 ---
 name: workflow-branch
-description: "Workflow utility: cut a working branch for the current task from a freshly-updated base, named after the repo's own convention"
+description: "Workflow utility: cut a working branch for the current task from a verified base, named after the repo's own convention"
 argument-hint: "[<issue key or short title>] [--base <branch>]"
 model: sonnet
 disable-model-invocation: true
@@ -28,19 +28,62 @@ Stop with a one-line note if this is not a git repository.
 Read `.workflow/current-issue.md` if it exists — the common case, since `/workflow-clarify`
 writes it moments before you get here. Take from it:
 
-- the issue key from `**Source**` (a `[A-Z]{2,}-\d+` match)
-- the title from the `# Issue:` line
+- the title from the `# Issue:` line — but prefer the work actually in front of you when that
+  title has drifted. A scratchpad scoped a while back tends to name the ticket's opening problem
+  rather than what this branch will hold, and a name built from it can land close enough to an
+  existing branch to be unreadable at a glance.
 - the kind of work from `## Problem Statement`, which decides the prefix in step 3
 
 Running without a scratchpad is equally valid — this is also how you branch for a hotfix nobody
 scoped, or split a second branch off work already in flight. Take the key and title from
 `$ARGUMENTS` then, and ask for whatever is missing rather than inventing it.
 
-One case deserves a recommendation before going further: if HEAD is already on a branch carrying
-this issue's key, someone cut it already. Say so and suggest staying put — but let the developer
-answer, because a second branch off the same ticket is a legitimate thing to want.
+### Find the issue key
+
+The key is worth hunting for rather than asking about, since it is what `/workflow-commit` later
+reads back out of the branch name. Check all of these before concluding there isn't one, taking
+the first `[A-Z]{2,}-\d+` that turns up:
+
+1. **`$ARGUMENTS`**, when the developer named one outright.
+2. **The scratchpad's `**Source**` line**
+3. **The scratchpad's `**Branch**` line** — clarify may have recorded a branch that already
+   carries the key even when `**Source**` names the ticket another way.
+4. **Recent commit subjects** — `git log -10 --format='%s'`. A repo whose last commits all read
+   `PROJ-42: …` is stating the key plainly.
+
+Stopping at `**Source**` is the mistake worth naming: trackers write their references in forms
+the pattern never matches — `GitLab issue group/repo#1`, a bare URL, a plain title — while the
+key sits in view one line below or in every recent commit.
+
+### Check whether the branch already exists
+
+Someone may have cut it already, before clarify ran or on another machine:
+
+```bash
+git branch -a --format='%(refname:short)' | grep -iE '(^|[^A-Za-z0-9])<key>([^0-9]|$)'
+```
+
+The boundaries earn their keep once ticket numbers reach double digits — a bare `grep -i 'DW-1'`
+also matches every `DW-10` and `DW-11` branch in the repo.
+
+Search every ref, local and remote — not just HEAD. A branch for this key sitting unnoticed on
+the remote is the case that actually costs something: cut a second one and the ticket's work
+splits across two branches that each look perfectly correct in isolation.
+
+- **HEAD is already on it** → say so and suggest staying put.
+- **It exists elsewhere** → name it, say how it sits relative to HEAD
+  (`git rev-list --left-right --count HEAD...<branch>`), and offer switching to it as a real
+  alternative to cutting a new one. Compare against HEAD rather than the base — step 2 has not
+  chosen a base yet.
+
+Let the developer answer either way — a second branch off the same ticket is a legitimate thing
+to want.
 
 ## 2. Choose the base branch
+
+If `--base <branch>` was passed, that settles it: confirm the branch exists and go to step 3
+without asking. The list below is for when it wasn't — offering a menu after the developer
+already named their base is the kind of question that teaches people to stop passing flags.
 
 Present the real candidates as an explicit list, not a fallback chain. Every one of these that
 exists belongs in it:
@@ -53,6 +96,10 @@ exists belongs in it:
    ```bash
    git symbolic-ref --short refs/remotes/origin/HEAD
    ```
+   That ref goes unset on plenty of ordinary clones, and an empty answer means "unknown", not
+   "there isn't one". Check whether `origin/main` or `origin/master` exists and use whichever
+   does, rather than dropping the candidate — losing it can leave the list with nothing in it
+   but the branch already checked out, which is not a choice.
 4. **Something else** — let them type a branch name.
 
 Listing the current branch here means "cut the new branch from it", not "stay on it".
@@ -68,17 +115,38 @@ Read the convention off the repo first:
 git branch -a --format='%(refname:short)'
 ```
 
-Two signals decide the prefix, in this order:
+### The prefix
 
-- **What the repo already uses.** If `feature/` and `chore/` appear in that output and nothing
-  else does, those are the house style — put them first.
-- **What kind of task this is**, from the problem statement: `feature/` for new capability,
-  `bugfix/` or `fix/` for defects, `hotfix/` for something urgent against production, `chore/`
-  for maintenance and tooling, `release/` for release prep.
+Work through these in order. The repo scan shapes the *recommendation*; it never shrinks the menu.
 
-Recommend the prefix where both signals agree, list the others (including any of the six the repo
-has not used yet — a repo that has never needed a `hotfix/` still allows one), and always include
-an unprefixed option. Take any name the developer types verbatim.
+**a. Collect the prefixes the repo already uses** — the distinct segments before a `/` in that
+output. These are the house style, and where one already covers this kind of work, prefer its
+spelling: `fix/` over `bugfix/` if that is what the repo says.
+
+**b. Read the kind of work off the problem statement** and map it to its conventional prefix:
+
+| Kind of work | Prefix |
+|---|---|
+| New capability | `feature/` |
+| Defect in existing behaviour | `bugfix/` or `fix/` |
+| Urgent fix against production | `hotfix/` |
+| Maintenance, tooling, dependencies, docs | `chore/` |
+| Release preparation | `release/` |
+
+**c. If the repo uses no prefixes at all**, settle that first: ask whether this branch should
+carry one, noting that the existing branches don't. An unprefixed repo is a convention, not an
+oversight — but it is the developer's to confirm, not yours to assume in either direction.
+
+**d. Present the whole table and recommend the row matching this task** — including prefixes the
+repo has never used. This is the step that quietly collapses: narrowing the menu to whatever
+`git branch` returned looks tidy and considerate, and it removes exactly the option the developer
+needed. A repo that has never cut a `hotfix/` still allows one, and someone fixing production at
+2am should not have to recall the convention unaided. Mark which rows the repo already uses so
+the house style stays visible without becoming a fence.
+
+Always include an unprefixed option, and take any name the developer types verbatim.
+
+### The body
 
 The body of the name is the issue key, an underscore, then the title slugified — lowercase,
 runs of non-alphanumerics collapsed to single hyphens:
@@ -99,26 +167,59 @@ is still worth branching for; it just loses that one piece of automation.
 
 ## 4. Refresh the base before cutting
 
-The branch has to start from what the remote has now, not from whatever was fetched days ago:
+The branch has to start from what the remote has now, not from whatever was fetched days ago.
+Update the remote refs first, then read where the base actually stands:
 
 ```bash
 git fetch origin
-git fetch origin <base>:<base>    # fast-forwards the local ref without checking it out
+git rev-list --left-right --count <base>...origin/<base>
+```
+
+The two numbers are commits the base has that the remote lacks, then commits the remote has that
+the base lacks. All four combinations are ordinary; only the last is a problem:
+
+| Base ahead | Remote ahead | Meaning | What to do |
+|---|---|---|---|
+| 0 | 0 | already current | nothing to fast-forward — go to step 5 |
+| 0 | N | behind | fast-forward it, below |
+| N | 0 | ahead by N unpushed commits | nothing to refresh — report it and cut |
+| N | M | genuinely diverged | stop and ask |
+
+The `N`/`0` row is worth stating outright, because the instinct is to read any non-zero count as
+staleness and "refresh" it. Attempting the fast-forward there asks git to rewind the base past
+commits that exist nowhere else, which it refuses — and relaying that refusal as a stale base
+sends the developer to fix something that is not broken. Unpushed local commits are the freshest
+base available, not the most dangerous one.
+
+When the base is behind, fast-forward it:
+
+```bash
+git fetch origin <base>:<base>    # moves the local ref without checking it out
 ```
 
 Updating the ref instead of switching to it means a dirty working tree never blocks the refresh,
 and there is no branch-switching round trip. When the base is the branch already checked out, git
 refuses that refspec form — use `git pull --ff-only` there.
 
-Both forms refuse to create a merge commit. If either fails, the local base has diverged from the
-remote: report what happened and ask whether to cut from the stale base anyway or stop and sort
-the divergence out first. The same applies when there is no remote, the host is unreachable, or
-the fetch fails for any other reason — say why, then ask. Quietly branching from an unverified
-base is the exact failure this skill exists to prevent.
+Both forms refuse to create a merge commit. If the count came back `N`/`M`, or the fast-forward
+fails anyway, the base and the remote have each moved independently: report both numbers and ask
+whether to cut from it regardless or stop and sort the divergence out first. The same applies
+when the host is unreachable or the fetch fails for any other reason — say why, then ask. Quietly
+branching from an unverified base is the exact failure this skill exists to prevent.
+
+A base with no counterpart on the remote is a different case, and not an error: a purely local
+branch, or a repo with no remote at all, has nothing to be stale against. Say that it could not
+be checked against a remote, then carry on without asking.
 
 ## 5. Handle uncommitted changes
 
-If the working tree is dirty, show what is in it:
+A dirty tree only obstructs anything when the base is *not* the branch already checked out.
+`git switch -c <name> <base>` carries uncommitted changes across untouched unless they collide
+with the difference between HEAD and the base — and when the base is HEAD, which is how most
+branches get cut, there is no difference to collide with. Say nothing and go to step 6 there.
+Asking about a stash that was never needed interrupts the developer to decline an offer.
+
+When the base is something other than HEAD, show what is in the tree first:
 
 ```bash
 git status --short
@@ -145,9 +246,11 @@ there is no scratchpad — the branch itself still carries the Task ID, which is
 
 ## Wrap up
 
-Report the branch name and the base it was cut from, and say whether that base was successfully
-refreshed or accepted as stale — that last detail is worth surfacing, since it is invisible in
-`git branch` afterwards.
+Report the branch name and the base it was cut from, along with which of these happened to that
+base: **fast-forwarded**, **already current**, **unverifiable** (no remote counterpart), or
+**accepted as stale**. That detail is worth spelling out because it is invisible in `git branch`
+afterwards, and the four are not interchangeable — only the last one is a known risk being taken
+deliberately.
 
 Then point at the next step. This skill sits at no fixed position in the workflow: it gets run
 straight after `/workflow-clarify`, after `/workflow-plan` when the plan reveals the work wants a
