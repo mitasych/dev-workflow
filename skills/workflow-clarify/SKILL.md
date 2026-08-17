@@ -1,6 +1,6 @@
 ---
 name: workflow-clarify
-description: "Workflow Step 1: Clarify & scope an issue before planning or implementation, then optionally cut a working branch from an up-to-date base"
+description: "Workflow Step 1: Clarify & scope an issue before planning or implementation"
 argument-hint: "<issue description or Jira ticket key> [--source <obsidian note path | file path | URL>]"
 model: sonnet
 disable-model-invocation: true
@@ -122,148 +122,18 @@ Save the analysis to `.workflow/current-issue.md` in the following format:
 
 Create a `.gitignore` file within the `.workflow` directory containing a single line `*`, if such a file does not already exist.
 
-Fill `**Branch**` with the branch currently checked out — the branching step below updates it if a new branch gets created.
-
-## Create a working branch
-
-The scratchpad is saved, but the developer still has to decide where this work will live.
-This is the right moment to settle it: the key and title are fresh, and it is the last point
-before implementation where cutting from a stale base is still free to fix. Once there are
-commits on a branch that started from a week-old `develop`, the conflicts are already baked in.
-
-Skip this whole section, with a one-line note, if the project is not a git repository.
-
-### 1. Ask first — one question, nothing else
-
-This is the only question in this section asked every time, and it is strictly binary. Ask it on
-its own, before any name or base has been considered:
-
-`Do you want to create a new branch for this task? (yes / no)`
-
-**No** → skip the entire rest of this section. No fetch, no switch, no stash, no follow-up
-questions. Record the branch currently checked out as `**Branch**` and go to the wrap-up.
-
-**Yes** → work through 2–4 below.
-
-Keep this gate separate from everything that follows. The failure worth avoiding is folding it
-into the base-branch choice and presenting something like "stay on current / create feature/x" —
-that merges two unrelated decisions and hides most of the real options. Whether to branch is one
-question; what to branch *from* is a different one, asked only after the answer is yes.
-
-Ask regardless of where the issue came from: a `manual` source type means there is no ticket key
-yet, not that the work deserves no branch of its own.
-
-One case deserves a recommendation rather than a neutral ask — when HEAD is already on a branch
-carrying this issue's key (someone ran `git switch -c DW-1_...` before clarifying). Point that
-out and suggest staying, but still let them answer.
-
-### 2. Choose the base branch
-
-Present the real candidates as an explicit list, not a fallback chain. Every one of these that
-exists belongs in it:
-
-1. **`develop`** — whenever it exists locally or as `origin/develop`. Always list it; on
-   gitflow-style repos it is nearly always the right answer.
-2. **The current branch** — always list it, whatever it is. Stacking a task branch on work in
-   progress is common and legitimate.
-3. **The remote default** — `main`/`master`, when not already covered above:
-   ```bash
-   git symbolic-ref --short refs/remotes/origin/HEAD
-   ```
-4. **Something else** — let them type a branch name.
-
-Listing the current branch here means "cut the new branch from it". It is not an offer to stay on
-it — that was already settled in step 1.
-
-Recommend one, but let the developer pick. A branch cut from the wrong base looks completely
-normal until merge time, which is the most expensive moment to discover it.
-
-### 3. Propose a name
-
-Read the convention off the repo first:
-
-```bash
-git branch -a --format='%(refname:short)'
-```
-
-Two signals decide the prefix, in this order:
-
-- **What the repo already uses.** If `feature/` and `chore/` appear in that output and nothing
-  else does, those are the house style — put them first.
-- **What kind of task this is**, from the problem statement you just wrote: `feature/` for new
-  capability, `bugfix/` or `fix/` for defects, `hotfix/` for something urgent against production,
-  `chore/` for maintenance and tooling, `release/` for release prep.
-
-Recommend the prefix where both signals agree, list the others (including any of the six the repo
-has not used yet — a repo that has never needed a `hotfix/` still allows one), and always include
-an unprefixed option. Take any name the developer types verbatim.
-
-The body of the name is the issue key, an underscore, then the title slugified — lowercase,
-runs of non-alphanumerics collapsed to single hyphens:
-
-    feature/DW-1_workflow-clarify-and-new-branch-creating
-    DW-1_workflow-clarify-and-new-branch-creating          (unprefixed)
-
-The key leads for a concrete reason: `/workflow-commit` recovers the Task ID by matching
-`[A-Z]{2,}-\d+` against the branch name and prefixes every commit message with it. A `feature/`
-prefix is harmless to that match; losing the key is not — every commit on the branch silently
-ships without its Task ID.
-
-When the issue arrived without a key, ask for one here rather than assuming there isn't one —
-developers often know the ticket number even when the description they pasted never mentioned
-it. If they supply one, treat it as the key. If they don't, propose the branch built from the
-bare slug and mention once that commits on it will carry no Task ID prefix. An untracked issue
-is still worth branching for; it just loses that one piece of automation.
-
-### 4. Refresh the base before cutting
-
-This is the part the issue is actually about — the branch has to start from what the remote has
-now, not from whatever was fetched days ago:
-
-```bash
-git fetch origin
-git fetch origin <base>:<base>    # fast-forwards the local ref without checking it out
-```
-
-Updating the ref instead of switching to it means a dirty working tree never blocks the refresh,
-and there is no branch-switching round trip. When the base is the branch already checked out, git
-refuses that refspec form — use `git pull --ff-only` there.
-
-Both forms refuse to create a merge commit. If either fails, the local base has diverged from the
-remote: report what happened and ask whether to cut from the stale base anyway or stop and sort
-the divergence out first. The same applies when there is no remote, the host is unreachable, or
-the fetch fails for any other reason — say why, then ask. Quietly branching from an unverified
-base is the exact failure this step exists to prevent.
-
-### 5. Handle uncommitted changes
-
-If the working tree is dirty, show what is in it:
-
-```bash
-git status --short
-```
-
-Then ask how to proceed: stash → branch → pop, commit first (stopping here), or skip branch
-creation. Do not stash on the developer's behalf — a `git stash pop` that conflicts drops them
-into a conflicted tree they never asked for, in the middle of a step they thought was about
-scoping a ticket.
-
-### 6. Create it and record it
-
-```bash
-git switch -c <name> <base>
-```
-
-If the name already exists locally or on the remote, report the collision and ask — different
-name, switch to the existing branch, or stop. Never force-move a branch someone else may be using.
-
-Then update the `**Branch**` and `**Base branch**` fields in `.workflow/current-issue.md` so
-`/workflow-plan` and `/workflow-commit` inherit the context instead of re-deriving it.
+Fill `**Branch**` with the branch currently checked out and `**Base branch**` with `n/a`;
+`/workflow-branch` overwrites both if you cut a new branch.
 
 ## Wrap up
 
-Display a summary: the restated problem, the acceptance criteria, and — when a branch was
-created — its name and the base it was cut from. Highlight any **open questions** that need
-resolving before moving to the planning step.
+Display a summary: the restated problem and the acceptance criteria. Highlight any **open
+questions** that need resolving before moving to the planning step.
 
-If there are no open questions and everything is clear, suggest proceeding to `/workflow-plan`.
+Then suggest `/workflow-branch` — unless this is not a git repository, or HEAD is already on a
+branch carrying this issue's key. Give the reason rather than just naming the command: the key
+and title are fresh right now, and this is the last point before implementation where cutting
+from a stale base is still free to fix. Once there are commits on a branch that started from a
+week-old `develop`, the conflicts are already baked in.
+
+If there are no open questions and everything is clear, suggest `/workflow-plan` after that.

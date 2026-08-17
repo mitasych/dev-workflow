@@ -46,9 +46,8 @@ Use /workflow-status at any point to see where you are.
 
   Step 1  /workflow-clarify <issue or JIRA-KEY>
           Scope the problem, define acceptance criteria,
-          identify affected components, surface open questions,
-          then optionally cut a working branch from a
-          freshly-updated base.
+          identify affected components, surface open questions.
+          Suggests /workflow-branch when it's done.
 
   Step 2  /workflow-plan [--source <path|url>]
           Produce an ordered implementation plan.
@@ -88,6 +87,11 @@ Use /workflow-status at any point to see where you are.
   UTILITY COMMANDS
 ──────────────────────────────────────────────────
 
+  /workflow-branch [<key or title>] [--base <branch>]
+                      Cut a working branch from a freshly-fetched
+                      base, named after the repo's own convention.
+                      Usually run right after clarify, but valid at
+                      any point — including with no .workflow/ state.
   /workflow-status    Show progress and suggest next step
   /workflow-learn     Teach the change via Socratic teach-back
                       until you can explain it (problem, solution,
@@ -130,8 +134,11 @@ Use /workflow-status at any point to see where you are.
 ──────────────────────────────────────────────────
 
   • Always start with /workflow-clarify — it seeds the
-    scratchpad used by every subsequent step, and can
-    cut your working branch from an up-to-date base.
+    scratchpad used by every subsequent step.
+
+  • Run /workflow-branch right after clarify: the key and
+    title are fresh, and it's the last point where cutting
+    from a stale base is still free to fix.
 
   • /workflow-plan activates Plan mode (read-only).
     Exit Plan mode before running /workflow-implement.
@@ -176,7 +183,8 @@ Use the table below as the source of truth:
 
 | Step | Purpose | Reads | Writes | Model | Next |
 |---|---|---|---|---|---|
-| `clarify` | Scope issue, define acceptance criteria | Jira / args / --source | `# Issue:` section | Sonnet | `plan` |
+| `clarify` | Scope issue, define acceptance criteria | Jira / args / --source | `# Issue:` section | Sonnet | `branch`, then `plan` |
+| `branch` | Cut a working branch from a freshly-fetched base (`/workflow-branch`) | scratchpad _(optional)_ + git refs | `**Branch**` / `**Base branch**` fields | Sonnet | depends on scratchpad state |
 | `plan` | Create ordered implementation plan | scratchpad + codebase | `## Implementation Plan` | **Opus** | `implement` or `test-red` |
 | `implement` | Execute plan step by step | scratchpad plan | `## Implementation Status` | Sonnet | `test` |
 | `test` | Run test suite | scratchpad | `## Test Status` | Sonnet | `review` |
