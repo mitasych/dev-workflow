@@ -38,6 +38,12 @@ Running without a scratchpad is equally valid — this is also how you branch fo
 scoped, or split a second branch off work already in flight. Take the key and title from
 `$ARGUMENTS` then, and ask for whatever is missing rather than inventing it.
 
+With nothing supplied at all — no scratchpad, no arguments, no key — the repo is still evidence.
+`git status --short` and `git diff --stat` name the files being worked on, and recent commit
+subjects show what the repo has been doing lately. Propose a name from that and have it confirmed;
+an empty "what should I call this branch?" hands the developer back a question they came here to
+answer.
+
 ### Find the issue key
 
 The key is worth hunting for rather than asking about, since it is what `/workflow-commit` later
@@ -54,6 +60,30 @@ the first `[A-Z]{2,}-\d+` that turns up:
 Stopping at `**Source**` is the mistake worth naming: trackers write their references in forms
 the pattern never matches — `GitLab issue group/repo#1`, a bare URL, a plain title — while the
 key sits in view one line below or in every recent commit.
+
+### Check for a parent story
+
+A subtask is rarely worth its own branch. The story is what gets reviewed and merged; splitting
+its subtasks across five branches turns one review into five, each showing a fragment that does
+not stand on its own.
+
+So when the issue is a subtask, find its parent — step 3 offers it as a second name.
+
+1. **The scratchpad's `**Parent**` line**, which `/workflow-clarify` writes when it fetched the
+   ticket from Jira.
+2. **A live lookup** — only when that line is absent, the key is Jira-shaped, and a Jira/Atlassian
+   MCP tool is already available in this session. One call, and never a blocker: if it fails, or
+   no such tool exists, carry on with the subtask's own key and say nothing. This is git work; it
+   does not stall on a tracker, and it never asks the developer to go set one up.
+
+Two things must both hold for a parent to matter:
+
+- the issue is genuinely a **subtask** (`issuetype.subtask` is true, or the tracker says as much), and
+- the parent is a **story or task, not an epic**. Jira records the epic in `parent` for ordinary
+  stories too, so "has a parent" is not the test. An epic spans weeks and many stories; a branch
+  named after one would outlive every task on it. When the parent is an epic, ignore it entirely.
+
+With no key, no tracker, and no scratchpad there is nothing to check — skip this without comment.
 
 ### Check whether the branch already exists
 
@@ -78,6 +108,11 @@ splits across two branches that each look perfectly correct in isolation.
 
 Let the developer answer either way — a second branch off the same ticket is a legitimate thing
 to want.
+
+Run the same search for the parent story's key when one turned up above. An existing story branch
+is the strongest reason in this skill not to cut anything: the subtask's work belongs on it, and
+cutting a sibling is how one story ends up with two half-finished branches. Offer switching to it
+first, with a new branch as the alternative rather than the default.
 
 ## 2. Choose the base branch
 
@@ -133,6 +168,9 @@ spelling: `fix/` over `bugfix/` if that is what the repo says.
 | Maintenance, tooling, dependencies, docs | `chore/` |
 | Release preparation | `release/` |
 
+With no problem statement to read, take the kind of work from the diff instead — new files under a
+feature directory read differently from a one-line change in an error path.
+
 **c. If the repo uses no prefixes at all**, settle that first: ask whether this branch should
 carry one, noting that the existing branches don't. An unprefixed repo is a convention, not an
 oversight — but it is the developer's to confirm, not yours to assume in either direction.
@@ -158,6 +196,20 @@ The key leads for a concrete reason: `/workflow-commit` recovers the Task ID by 
 `[A-Z]{2,}-\d+` against the branch name and prefixes every commit message with it. A `feature/`
 prefix is harmless to that match; losing the key is not — every commit on the branch silently
 ships without its Task ID.
+
+When step 1 found a story parent, offer both bodies — the prefix is already settled, so this is one
+menu of two — and recommend the parent's:
+
+    feature/DW-2_payment-retry-flow      ← the parent story (recommended)
+    feature/DW-5_add-retry-backoff       ← this subtask alone
+
+Both rows, always. The story name is an addition to the menu, never a substitution: a subtask that
+genuinely stands alone, or one being handed to someone else, wants its own branch.
+
+Say what neither name shows: by that same Task ID rule, the story branch prefixes every commit
+`DW-2:` and the subtask key never reaches the history. That is usually the right trade — the story
+is the unit of work — but a team tracking progress per subtask will want the opposite. If they want
+both keys in view, `feature/DW-2_DW-5_add-retry-backoff` works; the first key still wins the prefix.
 
 When no key turned up in step 1, ask for one here rather than assuming there isn't one —
 developers often know the ticket number even when the description they pasted never mentioned
