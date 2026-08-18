@@ -83,8 +83,15 @@ Lowercase, imperative mood. Budget against the **assembled** subject rather than
 Decide the format before assembling. Check in order:
 
 - **A commitlint config** — `ls -a | grep -iE '^\.?commitlint'`, plus `grep -l '"commitlint"' package.json 2>/dev/null` (the redirect matters — most repos have no `package.json`, and the bare form writes an error and exits 2). Any hit settles it: **conventional**. A config is what the repo intends to enforce and wins over history, even where older commits predate it.
-- **Recent history** — `git log -20 --format='%s'`. **Conventional** when most subjects match `^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?: `. Read "most" as 60% **of the subjects that came back**, not of 20 — a young repo returns fewer, and an absolute count would leave a repo whose every commit is conventional undetectable until its twelfth. Under 3 commits there is no signal either way: go straight to the prompt.
-- **Neither** — ask: `No commit convention detected. Use Conventional Commits (type(scope): description)? (y/N)`
+- **Recent history** — `git log -20 --format='%s'`. **Conventional** when most subjects match `^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?: `. Read "most" as 60% **of the subjects that came back**, not of 20 — a young repo returns fewer, and an absolute count would leave a repo whose every commit is conventional undetectable until its twelfth. Under 3 commits there is no signal either way.
+
+  History that fails to clear that bar proves nothing. It does **not** select house style — it means this check did not decide, and the next one runs.
+
+- **Nothing returned *conventional*** — **STOP and ask before composing anything:**
+
+  `No commit convention detected. Use Conventional Commits (type(scope): description)? (y/N)`
+
+  A repo whose history is entirely `TASK-ID: …` lands here every time. That is the designed path, not an edge case — and reading unmatched history as a vote for house style is the specific mistake this gate exists to prevent. Do not compose, do not stage-report, do not commit until the question is answered.
 
 Ask every time. Do not record the answer — not in the scratchpad, not in a config, not in session memory. A repo that has not adopted the convention should keep being offered it, and re-asking is cheaper than state that goes quietly stale.
 
