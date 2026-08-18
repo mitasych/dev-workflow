@@ -2,7 +2,7 @@
 name: workflow-release
 description: "Workflow Step 7/8: SemVer bump, changelog commit, tag, and push"
 argument-hint: "[major | minor | patch] [--dry-run]"
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git tag:*), Bash(git log:*), Bash(git push:*), Bash(git diff:*), Bash(cat:*), Bash(grep:*)
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git tag:*), Bash(git log:*), Bash(git push:*), Bash(git diff:*), Bash(cat:*), Bash(grep:*), Bash(ls:*)
 model: sonnet
 disable-model-invocation: true
 ---
@@ -51,15 +51,110 @@ $ARGUMENTS
 
 - Calculate the next version based on the bump type
 
-### 3. Dry run check
+### 3. Build commit message
+
+The commit message follows a structured format. Build it in this order:
+
+#### Step 1 — Extract task ID (if available)
+
+Read `.workflow/current-issue.md` and look at the **Source** field. If it contains a Jira ticket key or other task/issue identifier (e.g. `PROJ-123`, `#42`, `FEATURE-001`), extract it as `<TASK-ID>`. Prefer a `[A-Z]{2,}-\d+` key when more than one form is present: a bare `#42` is a legal conventional scope but an unusual one, and commitlint's scope rules may reject it, so use it only when it is the only identifier available.
+
+If the Source field says "manual description" or contains no recognizable identifier, proceed without a task ID.
+
+#### Step 2 — Generate a single-line summary
+
+Analyze the actual code changes since the last tag (or since the start if no tags exist):
+
+```bash
+git diff --stat <last-tag>..HEAD
+git log --oneline <last-tag>..HEAD
+```
+
+Write a concise, meaningful summary of **what changed** (not just "release"). Examples:
+
+- `add retry logic for failed webhook deliveries`
+- `fix race condition in consumer message ordering`
+- `implement partner CRUD API endpoints`
+
+Lowercase, imperative mood. Budget against the **assembled** subject rather than the summary alone — `chore(PROJ-123): release v1.2.0 — ` spends about 34 characters before the summary starts, so aim near 35 and treat 72 as the ceiling for the finished line.
+
+#### Step 3 — Detect the commit style
+
+Decide the format before assembling. Check in order:
+
+- **A commitlint config** — `ls -a | grep -iE '^\.?commitlint'`, plus `grep -l '"commitlint"' package.json 2>/dev/null` (the redirect matters — most repos have no `package.json`, and the bare form writes an error and exits 2). Any hit settles it: **conventional**. A config is what the repo intends to enforce and wins over history, even where older commits predate it.
+- **Recent history** — `git log -20 --format='%s'`. **Conventional** when most subjects match `^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?: `. Read "most" as 60% **of the subjects that came back**, not of 20 — a young repo returns fewer, and an absolute count would leave a repo whose every commit is conventional undetectable until its twelfth. Under 3 commits there is no signal either way: go straight to the prompt.
+- **Neither** — ask: `No commit convention detected. Use Conventional Commits (type(scope): description)? (y/N)`
+
+Ask every time. Do not record the answer — not in the scratchpad, not in a config, not in session memory. A repo that has not adopted the convention should keep being offered it, and re-asking is cheaper than state that goes quietly stale.
+
+#### Step 4 — Assemble the commit message
+
+**House style** (conventional not in use) — unchanged.
+
+With task ID:
+
+```
+<TASK-ID>: release v<version> — <summary>
+```
+
+Without task ID:
+
+```
+release v<version> — <summary>
+```
+
+Examples:
+
+- `PROJ-123: release v1.2.0 — add retry logic for failed webhook deliveries`
+- `release v0.3.1 — fix race condition in consumer message ordering`
+
+**Conventional style** — the type is `chore` and the scope is the task ID, matching
+`/workflow-commit` and `/workflow-commit-dev`:
+
+```
+chore(<TASK-ID>): release v<version> — <summary>
+chore: release v<version> — <summary>            (no task ID; never `chore():`)
+```
+
+Examples:
+
+- `chore(PROJ-123): release v1.2.0 — add retry logic for webhooks`
+- `chore: release v0.3.1 — fix race in consumer ordering`
+
+Note that this deliberately does **not** use the `chore(release):` scope that
+`standard-version` and `semantic-release` key on — the task ID owns the scope slot in every
+skill in this plugin. Those tools will not recognise these as release commits; `/workflow-release`
+is what cuts releases here.
+
+**Breaking changes.** In conventional style, a **major** bump is a breaking change by
+definition: apply `!` before the colon and add a footer.
+
+```
+chore(PROJ-123)!: release v2.0.0 — remove the legacy webhook path
+
+BREAKING CHANGE: <what broke, and what callers must do instead>
+```
+
+Ask for the footer text — a major bump the user just confirmed in section 1 tells you a break
+happened, not what it was. This skill deliberately has no `--breaking` flag: the bump already
+carries the decision, and a flag able to contradict it would be a second source of truth. In house style there is no `!` and no footer; the version number
+carries the signal alone.
+
+**Assemble the final message now, before section 6 commits anything.** Section 6 amends with
+`git commit --amend --no-edit`, which reuses the subject verbatim — a `!` or a footer decided
+after the initial commit will never reach the message.
+### 4. Dry run check
 
   If `--dry-run` is present:
 
-- Show everything that **would** happen (version, changelog entry, commits, tag) without executing anything.
+- Show everything that **would** happen: the version, the assembled commit message from section 3, the changelog entry, and the tag.
+
+- Compose the changelog entry as section 5 describes but **display it instead of writing it** — a dry run must leave `CHANGELOG.md` untouched.
 
 - Stop after showing the preview.
 
-### 4. Prepare CHANGELOG.md
+### 5. Prepare CHANGELOG.md
 
 - **REQUIRED — get the author first** (before writing any changelog text):
   
@@ -92,52 +187,6 @@ $ARGUMENTS
   The inline author is **mandatory** — it must appear on the same line as the version and date in every release entry. Do **not** emit a separate `**Author**:` line below the heading.
 
 - Follow the existing changelog format. If no format exists, use [Keep a Changelog](https://keepachangelog.com/).
-
-### 5. Build commit message
-
-The commit message follows a structured format. Build it in this order:
-
-#### Step 1 — Extract task ID (if available)
-
-Read `.workflow/current-issue.md` and look at the **Source** field. If it contains a Jira ticket key or other task/issue identifier (e.g. `PROJ-123`, `#42`, `FEATURE-001`), extract it as `<TASK-ID>`.
-
-If the Source field says "manual description" or contains no recognizable identifier, proceed without a task ID.
-
-#### Step 2 — Generate a single-line summary
-
-Analyze the actual code changes since the last tag (or since the start if no tags exist):
-
-```bash
-git diff --stat <last-tag>..HEAD
-git log --oneline <last-tag>..HEAD
-```
-
-Write a concise, meaningful summary of **what changed** (not just "release"). Examples:
-
-- `add retry logic for failed webhook deliveries`
-- `fix race condition in consumer message ordering`
-- `implement partner CRUD API endpoints`
-
-Keep it under 72 characters, lowercase, imperative mood.
-
-#### Step 3 — Assemble the commit message
-
-**With task ID:**
-
-```
-<TASK-ID>: release v<version> — <summary>
-```
-
-**Without task ID:**
-
-```
-release v<version> — <summary>
-```
-
-Examples:
-
-- `PROJ-123: release v1.2.0 — add retry logic for failed webhook deliveries`
-- `release v0.3.1 — fix race condition in consumer message ordering`
 
 ### 6. Execute the single-commit + amend flow
 

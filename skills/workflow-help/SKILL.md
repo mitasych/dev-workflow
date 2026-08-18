@@ -108,16 +108,22 @@ Use /workflow-status at any point to see where you are.
   COMMIT HELPERS
 ──────────────────────────────────────────────────
 
-  /workflow-commit [--push] [--dry-run] [desc]
-                      Stage + single-line commit prefixed with
-                      the branch Task ID (e.g. PROJ-123: ...).
-                      Never adds Co-authored-by.
-  /workflow-commit-dev [--push] [--dry-run]
+  /workflow-commit [--push] [--dry-run] [--breaking] [desc]
+                      Stage + single-line commit carrying the
+                      branch Task ID. Never adds Co-authored-by.
+  /workflow-commit-dev [--push] [--dry-run] [--breaking]
                       Commit using VERSION from .version and tag
                       dev-{version} (dev-rc{n}-{version} on RC or
                       test-RC branches).
 
   Lightweight companions to /workflow-release.
+
+  All three commit-producing skills (both of the above plus
+  /workflow-release) read the repo's convention first —
+  commitlint config, else recent git log. Conventional repos
+  get type(TASK-ID): description; the rest keep the
+  TASK-ID: prefix. Undetectable repos are asked every time.
+  --breaking adds ! and a BREAKING CHANGE: footer.
 
 ──────────────────────────────────────────────────
   STANDALONE TOOLS
@@ -154,8 +160,9 @@ Use /workflow-status at any point to see where you are.
     giving every command full context of prior steps.
 
   • For quick commits while implementing, use /workflow-commit
-    (Task-ID prefix) or /workflow-commit-dev (version + dev tag);
-    /workflow-release handles the final versioned release.
+    (Task ID, as prefix or scope) or /workflow-commit-dev
+    (version + dev tag); /workflow-release handles the final
+    versioned release.
 
   • After /workflow-review (or /workflow-release), use
     /workflow-jira-report to push a short status comment back
@@ -193,12 +200,12 @@ Use the table below as the source of truth:
 | `refactor` | Clean up code, keep tests green (TDD) | scratchpad + codebase | `## Refactor Status` | Sonnet | `review` |
 | `review` | AI code review | scratchpad + diff | `## Code Review` | **Opus** | `document` |
 | `document` | Update docs and CHANGELOG draft | scratchpad | `## Documentation Status` | Sonnet | `release` |
-| `release` | Version bump, tag, push | scratchpad + CHANGELOG | `## Release` | Sonnet | — |
+| `release` | Version bump, tag, push | scratchpad + CHANGELOG + repo commit convention | `## Release` | Sonnet | — |
 | `status` | Show progress, suggest next step | scratchpad | _(read-only)_ | Sonnet | — |
 | `learn` | Verify understanding via Socratic teach-back | scratchpad + diff | `.workflow/learning.md` | **Opus** | — |
 | `jira-report` | Post a brief work report as a Jira comment (`/workflow-jira-report`) | scratchpad + git log/diff | `## Jira Report` _(+ Jira comment)_ | Sonnet | — |
-| `commit` | Stage + Task-ID-prefixed commit (`/workflow-commit`) | branch + staged diff | _(git commit)_ | Sonnet | — |
-| `commit-dev` | Version-file commit + dev/RC tag (`/workflow-commit-dev`) | `.version` + staged diff | _(git commit + tag)_ | Sonnet | — |
+| `commit` | Stage + single-line commit, Conventional or Task-ID-prefixed (`/workflow-commit`) | branch + staged diff + repo commit convention | _(git commit)_ | Sonnet | — |
+| `commit-dev` | Version-file commit + dev/RC tag (`/workflow-commit-dev`) | `.version` + staged diff + repo commit convention | _(git commit + tag)_ | Sonnet | — |
 | `learn-code` | Teach any file, module, commit, or range Socratically | codebase + history (not scratchpad) | _(none; in-conversation checklist)_ | **Opus** | — |
 
 ---

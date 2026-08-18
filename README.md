@@ -41,10 +41,16 @@ To confirm it loaded: `/plugin` → look for `dev-workflow@skills-dir`, or just 
 - `/workflow-help [step | --tdd | --full]` — full workflow documentation
 
 ### Commit helpers
-Lightweight companions to `/workflow-release`. Both support `--push` and `--dry-run`, and
-never add a `Co-authored-by` line.
-- `/workflow-commit [--push] [--dry-run] [description]` — stage + single-line commit prefixed with the branch's Task ID (e.g. `PROJ-123: …`)
-- `/workflow-commit-dev [--push] [--dry-run]` — commit using `VERSION` from `.version`, then create a `dev-{version}` tag (`dev-rc{n}-{version}` on `RC-*`/`test-RC-*` branches)
+Lightweight companions to `/workflow-release`. Both support `--push`, `--dry-run`, and
+`--breaking`, and never add a `Co-authored-by` line.
+- `/workflow-commit [--push] [--dry-run] [--breaking] [description]` — stage + single-line commit carrying the branch's Task ID
+- `/workflow-commit-dev [--push] [--dry-run] [--breaking]` — commit using `VERSION` from `.version`, then create a `dev-{version}` tag (`dev-rc{n}-{version}` on `RC-*`/`test-RC-*` branches)
+
+**Commit format.** All three commit-producing skills — the two above plus `/workflow-release` —
+read the repo's convention before composing: a commitlint config first, then recent `git log`
+subjects. Where Conventional Commits is in use the Task ID becomes the scope
+(`feat(PROJ-123): add retry backoff`); otherwise it stays a prefix (`PROJ-123: Add retry
+backoff`). When neither signal is present they ask — every time, recording nothing.
 
 ## State
 
