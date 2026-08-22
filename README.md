@@ -1,7 +1,7 @@
 # dev-workflow
 
-A structured, multi-step development workflow for Claude Code, delivered as 17 explicit
-skills — 16 `/workflow-*` steps and utilities, plus a standalone `/learn-code` teacher. It
+A structured, multi-step development workflow for Claude Code, delivered as 18 explicit
+skills — 17 `/workflow-*` steps and utilities, plus a standalone `/learn-code` teacher. It
 carries a task from issue intake to a versioned release, keeping
 shared state in `.workflow/current-issue.md` (gitignored) inside whatever project you run
 it in.
@@ -15,6 +15,39 @@ invoke each explicitly (e.g. `/workflow-clarify`).
 
 To confirm it loaded: `/plugin` → look for `dev-workflow@skills-dir`, or just type
 `/workflow-` and check the completions.
+
+### Other agents
+
+The plugin also ships a root `plugin.json` conforming to [Agent Plugins
+1.0.0](https://github.com/agentplugins/agent-plugins-spec) — the vendor-neutral packaging
+standard read by ChatGPT, Codex, Cursor, GitHub Copilot, Kiro, and VS Code. The
+`skills/<name>/SKILL.md` layout is already exactly what that spec expects, so no skill file
+differs between clients.
+
+Those clients read `~/.agents/skills/`, not `~/.claude/skills/`. Install there directly:
+
+```bash
+git clone ssh://git@gitlab.wiz-team.com:2233/ai-tools/dev-workflow.git ~/.agents/skills/dev-workflow
+```
+
+Or, if you already run it in Claude Code, symlink that copy instead of cloning a second one —
+then a `git pull` updates both at once:
+
+```bash
+ln -s ~/.claude/skills/dev-workflow ~/.agents/skills/dev-workflow
+```
+
+Either way Codex picks up all 18 skills — verified against `codex-cli` 0.149.0.
+
+Two manifests coexist by necessity: Claude Code reads `.claude-plugin/plugin.json`, the spec
+requires `plugin.json` at the root, and the portable schema is closed — it rejects the
+`displayName` and `skills` fields Claude Code uses. **`name`, `version`, `description`,
+`author`, `license`, and `keywords` appear in both and must be kept identical.**
+
+Skill frontmatter deliberately keeps `model`, `argument-hint`, and `disable-model-invocation`,
+which sit outside the Agent Skills spec. Clients ignore unknown keys in practice — Cursor's own
+skills use `disable-model-invocation` — and dropping it would let an agent fire
+`/workflow-release` on its own. Portability is not worth that.
 
 ## Commands
 
@@ -37,6 +70,7 @@ To confirm it loaded: `/plugin` → look for `dev-workflow@skills-dir`, or just 
 - `/workflow-branch [<issue key or short title>] [--base <branch>]` — cut a working branch from a freshly-fetched base, named after the repo's own convention. Usually run right after `clarify`, but works at any point — including with no `.workflow/` state at all
 - `/workflow-status` — show progress and suggest the next step
 - `/workflow-learn` — Socratic teach-back until you can explain the change you shipped
+- `/workflow-jira-report [<JIRA-KEY>] [--dry-run]` — summarize the completed work and post it as a Jira ticket comment
 - `/learn-code [--file <path> | --module <dir> | --commit <hash> | --range <a>..<b>] [--source ...]` — standalone Socratic teacher for any existing file, module, commit, or commit range (not tied to the workflow or `.workflow/` state)
 - `/workflow-help [step | --tdd | --full]` — full workflow documentation
 
@@ -63,9 +97,10 @@ stored in plugin data.
 
 ```
 ~/.claude/skills/dev-workflow/
-  .claude-plugin/plugin.json     # plugin manifest (name, version, "skills": "./skills/")
+  plugin.json                    # portable manifest (Agent Plugins 1.0.0)
+  .claude-plugin/plugin.json     # Claude Code manifest (name, version, "skills": "./skills/")
   skills/
     workflow-clarify/SKILL.md
     workflow-plan/SKILL.md
-    ...                          # 17 skill dirs (14 workflow steps + 2 commit helpers + learn-code)
+    ...                          # 18 skill dirs (15 workflow steps + 2 commit helpers + learn-code)
 ```
