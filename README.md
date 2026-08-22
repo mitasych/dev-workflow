@@ -52,6 +52,11 @@ subjects. Where Conventional Commits is in use the Task ID becomes the scope
 (`feat(PROJ-123): add retry backoff`); otherwise it stays a prefix (`PROJ-123: Add retry
 backoff`). When neither signal is present they ask — every time, recording nothing.
 
+**Nothing commits unapproved.** All three then show you the composed message — along with the
+tag and push target where those apply — and wait for `yes` / `edit` / `no`. An `edit` is taken
+verbatim as the whole subject line, so a wrong type or scope costs a retype rather than a
+re-run. No flag skips the gate; `--dry-run` stops before reaching it.
+
 ## State
 
 Each step appends to `.workflow/current-issue.md` in the current project, so every step has

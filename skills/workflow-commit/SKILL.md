@@ -91,8 +91,35 @@ Parse these flags from the input:
 
 7. **Dry-run gate.** If `--dry-run` was passed, print the composed message and the staged file list, then STOP — do not commit.
 
-8. **Commit** with the composed message. Confirm success with `git log -1 --oneline`.
+8. **Approve the message.** Before committing, show exactly what is about to happen, then wait
+   for an answer:
 
-9. **Push (optional).** If `--push` was passed, run `git push` and confirm.
+   ```
+   Proposed commit message:
 
-10. **Summary.** Report the Task ID used (or "none"), the style used (conventional or house), the final message, and whether it was pushed.
+     <composed message, including any BREAKING CHANGE: footer>
+
+   Style:  <conventional | house> — <how it was decided>
+   Staged: <n> file(s)
+     <file list>
+   Push:   <yes, to <upstream> | no>
+
+   Commit this? (yes / edit / no)
+   ```
+
+   - **yes** → commit exactly the message shown. Do not recompose it.
+   - **edit** → take the replacement the developer types and use it **verbatim** as the entire
+     subject line. Do not re-apply the `TASK-ID:` prefix or the `type(scope):` wrapper — the text
+     they typed already *is* the subject, and re-wrapping it produces
+     `fix(PROJ-123): fix(PROJ-123): …`. If the edit does not match a convention the repo
+     enforces, say so once and take it anyway; the gate exists to give the developer the last word.
+   - **no** → commit nothing. Leave the staged changes staged and stop, so re-running picks up
+     where this left off.
+
+   Ask every time. No flag skips this — `--dry-run` never reaches here, having stopped at step 7.
+
+9. **Commit** with the approved message. Confirm success with `git log -1 --oneline`.
+
+10. **Push (optional).** If `--push` was passed, run `git push` and confirm.
+
+11. **Summary.** Report the Task ID used (or "none"), the style used (conventional or house), the final message, and whether it was pushed.

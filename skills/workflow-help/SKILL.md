@@ -125,6 +125,12 @@ Use /workflow-status at any point to see where you are.
   TASK-ID: prefix. Undetectable repos are asked every time.
   --breaking adds ! and a BREAKING CHANGE: footer.
 
+  All three then show you the composed message — plus the tag
+  and push target where those apply — and wait for
+  yes / edit / no before committing anything. An edit is used
+  verbatim as the whole subject line. No flag skips this gate;
+  --dry-run simply stops before reaching it.
+
 ──────────────────────────────────────────────────
   STANDALONE TOOLS
 ──────────────────────────────────────────────────
@@ -200,12 +206,12 @@ Use the table below as the source of truth:
 | `refactor` | Clean up code, keep tests green (TDD) | scratchpad + codebase | `## Refactor Status` | Sonnet | `review` |
 | `review` | AI code review | scratchpad + diff | `## Code Review` | **Opus** | `document` |
 | `document` | Update docs and CHANGELOG draft | scratchpad | `## Documentation Status` | Sonnet | `release` |
-| `release` | Version bump, tag, push | scratchpad + CHANGELOG + repo commit convention | `## Release` | Sonnet | — |
+| `release` | Version bump, tag, push — message and tag approved by you before the commit | scratchpad + CHANGELOG + repo commit convention | `## Release` | Sonnet | — |
 | `status` | Show progress, suggest next step | scratchpad | _(read-only)_ | Sonnet | — |
 | `learn` | Verify understanding via Socratic teach-back | scratchpad + diff | `.workflow/learning.md` | **Opus** | — |
 | `jira-report` | Post a brief work report as a Jira comment (`/workflow-jira-report`) | scratchpad + git log/diff | `## Jira Report` _(+ Jira comment)_ | Sonnet | — |
-| `commit` | Stage + single-line commit, Conventional or Task-ID-prefixed (`/workflow-commit`) | branch + staged diff + repo commit convention | _(git commit)_ | Sonnet | — |
-| `commit-dev` | Version-file commit + dev/RC tag (`/workflow-commit-dev`) | `.version` + staged diff + repo commit convention | _(git commit + tag)_ | Sonnet | — |
+| `commit` | Stage + single-line commit, Conventional or Task-ID-prefixed, approved by you before it lands (`/workflow-commit`) | branch + staged diff + repo commit convention | _(git commit)_ | Sonnet | — |
+| `commit-dev` | Version-file commit + dev/RC tag, both approved by you before they land (`/workflow-commit-dev`) | `.version` + staged diff + repo commit convention | _(git commit + tag)_ | Sonnet | — |
 | `learn-code` | Teach any file, module, commit, or range Socratically | codebase + history (not scratchpad) | _(none; in-conversation checklist)_ | **Opus** | — |
 
 ---
