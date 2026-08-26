@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Added
+
+- A portable `plugin.json` at the repo root, conforming to [Agent Plugins
+  1.0.0](https://github.com/agentplugins/agent-plugins-spec) — the vendor-neutral packaging
+  standard read by ChatGPT, Codex, Cursor, GitHub Copilot, Kiro, and VS Code. It sits alongside
+  the existing `.claude-plugin/plugin.json` rather than replacing it: Claude Code reads the
+  latter path, the spec requires the former, and the portable schema is closed — it rejects the
+  `displayName` and `skills` fields Claude Code relies on. No `SKILL.md` differs between
+  clients; the `skills/<name>/SKILL.md` layout was already what the spec expects.
+- Verified against `codex-cli` 0.149.0: Codex loads all 18 skills through a symlink into
+  `~/.agents/skills/`, frontmatter included. The plugin deliberately keeps `model`,
+  `argument-hint`, and `disable-model-invocation`, which sit outside the Agent Skills spec —
+  dropping them would let an agent fire `/workflow-release` on its own, and clients ignore
+  unknown keys in practice.
+- README section "Other agents", documenting both routes into `~/.agents/skills/` — a direct
+  clone, or a symlink to an existing Claude Code copy so one `git pull` updates both — along
+  with the dual-manifest arrangement and the six fields (`name`, `version`, `description`,
+  `author`, `license`, `keywords`) that must be kept identical across the two.
+- README bullet for `/workflow-jira-report`, which had shipped undocumented.
+
+### Fixed
+
+- README no longer claims every step sets `disable-model-invocation: true`. That stopped being
+  true in 1.7.3, when `/workflow-branch` became model-invocable; the "How it loads" paragraph
+  now names it as the exception and notes that it always asks before cutting anything.
+- Stale skill counts in the README — 18 skills and 17 `/workflow-*` commands, with the Layout
+  block's breakdown corrected to 15 workflow steps + 2 commit helpers + `learn-code`.
+
 ## [1.7.3] - 2026-08-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
