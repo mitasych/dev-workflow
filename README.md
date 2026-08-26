@@ -10,8 +10,9 @@ it in.
 
 This folder lives in a personal skills directory, so Claude Code auto-loads it every
 session as the plugin **`dev-workflow@skills-dir`** — no `/plugin install` step. Every
-step has `disable-model-invocation: true`, so Claude never fires one on its own; you
-invoke each explicitly (e.g. `/workflow-clarify`).
+step but one has `disable-model-invocation: true`, so you invoke it explicitly (e.g.
+`/workflow-clarify`). The exception is `/workflow-branch`, which Claude may offer on its
+own — and which always asks before cutting anything.
 
 To confirm it loaded: `/plugin` → look for `dev-workflow@skills-dir`, or just type
 `/workflow-` and check the completions.

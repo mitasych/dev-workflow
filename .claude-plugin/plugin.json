@@ -7,6 +7,7 @@
     "name": "Aleksandr Mitasov",
     "email": "mitasych@gmail.com"
   },
+  "license": "MIT",
   "keywords": ["workflow", "tdd", "planning", "code-review", "release"],
   "skills": "./skills/"
 }
