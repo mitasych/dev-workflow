@@ -34,7 +34,7 @@ To confirm it loaded: `/plugin` → look for `dev-workflow@skills-dir`, or just 
 `/workflow-refactor` → `review` → `document` → `release`
 
 ### Utilities
-- `/workflow-branch [<issue key or short title>] [--base <branch>]` — cut a working branch from a freshly-fetched base, named after the repo's own convention. Usually run right after `clarify`, but works at any point — including with no `.workflow/` state at all
+- `/workflow-branch [<issue key or short title>] [--base <branch>]` — cut a working branch from a freshly-fetched base, named after the repo's own convention. Usually run right after `clarify`, but works at any point — including with no `.workflow/` state at all. This is the one workflow skill Claude can invoke on its own — when you ask for a branch, when work starts on a keyed ticket from a base branch, or straight after `clarify` — and it always asks before cutting, with a "stay put" option that touches nothing
 - `/workflow-status` — show progress and suggest the next step
 - `/workflow-learn` — Socratic teach-back until you can explain the change you shipped
 - `/learn-code [--file <path> | --module <dir> | --commit <hash> | --range <a>..<b>] [--source ...]` — standalone Socratic teacher for any existing file, module, commit, or commit range (not tied to the workflow or `.workflow/` state)
