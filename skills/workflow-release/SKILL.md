@@ -197,7 +197,49 @@ after the initial commit will never reach the message.
 
 ### 6. Execute the single-commit + amend flow
 
-#### Step 1 — Initial release commit
+#### Step 1 — Approve the message and tag
+
+Check first that the tag is actually available:
+
+```bash
+git tag -l "<version>"
+```
+
+If it already exists, stop and ask how to proceed — a gate advertising a tag it cannot create
+sends the developer to approve something that is about to fail.
+
+Then show exactly what is about to happen, and wait for an answer:
+
+```
+Proposed commit message:
+
+  <the message assembled in section 3, including any BREAKING CHANGE: footer>
+
+Style:  <conventional | house> — <how it was decided>
+Staged: <n> file(s)
+  <file list>
+Tag:    <the tag from Step 4>
+Push:   <yes, to <upstream> | no>
+
+Commit this? (yes / edit / no)
+```
+
+- **yes** → commit exactly the message shown. Do not recompose it.
+- **edit** → take the replacement the developer types and use it **verbatim** as the entire
+  subject line. Do not re-apply the `TASK-ID:` prefix or the `type(scope):` wrapper — the text
+  they typed already *is* the subject, and re-wrapping it produces
+  `chore(PROJ-123): chore(PROJ-123): …`. If the edit does not match a convention the repo
+  enforces, say so once and take it anyway; the gate exists to give the developer the last word.
+- **no** → commit nothing and create no tag. Leave the staged changes staged and stop, so
+  re-running picks up where this left off.
+
+This gate is the only chance to change the subject. Step 3 below amends with
+`git commit --amend --no-edit`, which reuses it verbatim — an edit made after the initial commit
+reaches the changelog and the files, never the message.
+
+Ask every time. No flag skips this — `--dry-run` never reaches here, having stopped at section 4.
+
+#### Step 2 — Initial release commit
 
 Commit all release-related files (changelog, docs, etc.) in a single commit:
 
@@ -213,7 +255,7 @@ git add CHANGELOG.md README.md docs/
 git commit -m "<assembled commit message>"
 ```
 
-#### Step 2 — Review and amend
+#### Step 3 — Review and amend
 
 Show the commit and changelog to the user for review. If any edits are needed to CHANGELOG.md or other files:
 
@@ -225,7 +267,7 @@ git commit --amend --no-edit
 
 Repeat amending until the user is satisfied.
 
-#### Step 3 — Tag the final commit
+#### Step 4 — Tag the final commit
 
 ```bash
 git tag -a <version> -m "v_<version>"
@@ -235,7 +277,8 @@ git tag -a <version> -m "v_<version>"
 
 - **Uncommitted changes exist** — Stop. List the uncommitted files and ask whether to include them in a pre-release commit or stash them.
 
-- **Tag already exists** — Stop. Show the existing tag and ask how to proceed.
+- **Tag already exists** — checked in section 6 Step 1, before the approval gate. Stop there,
+  show the existing tag, and ask how to proceed.
 
 - **Push fails** — Report the error. Don't retry automatically.
   

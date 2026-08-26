@@ -77,10 +77,42 @@ Parse these flags from the input:
 
 9. **Dry-run gate.** If `--dry-run` was passed, print the version, the commit message, and the exact `git tag` command, then STOP.
 
-10. **Commit** with the message; confirm with `git log -1 --oneline`.
+10. **Approve the message.** Before committing, show exactly what is about to happen, then wait
+    for an answer:
 
-11. **Tag** using the command from step 8; confirm with `git tag -l "<tag>"`.
+    ```
+    Proposed commit message:
 
-12. **Push (optional).** If `--push` was passed, run `git push` and `git push origin "<tag>"`; confirm.
+      <composed message, including any BREAKING CHANGE: footer>
 
-13. **Summary.** Report the version, the style used (conventional or house), the commit message, the tag created, and whether it was pushed.
+    Style:  <conventional | house> — <how it was decided>
+    Staged: <n> file(s)
+      <file list>
+    Tag:    <the tag resolved in step 8>
+    Push:   <yes, to <upstream> | no>
+
+    Commit this? (yes / edit / no)
+    ```
+
+    Show the tag **as resolved in step 8** — `dev-rc2-1.6.0`, never the `dev-{VersionValue}`
+    template. The RC form is the whole reason this line is worth printing: it is the value most
+    likely to be wrong, and the hardest to undo once pushed.
+
+    - **yes** → commit exactly the message shown. Do not recompose it.
+    - **edit** → take the replacement the developer types and use it **verbatim** as the entire
+      subject line. Do not re-apply the `TASK-ID:` prefix or the `type(scope):` wrapper — the text
+      they typed already *is* the subject, and re-wrapping it produces
+      `chore(PROJ-123): chore(PROJ-123): …`. If the edit does not match a convention the repo
+      enforces, say so once and take it anyway; the gate exists to give the developer the last word.
+    - **no** → commit nothing and create no tag. Leave the staged changes staged and stop, so
+      re-running picks up where this left off.
+
+    Ask every time. No flag skips this — `--dry-run` never reaches here, having stopped at step 9.
+
+11. **Commit** with the approved message; confirm with `git log -1 --oneline`.
+
+12. **Tag** using the command from step 8; confirm with `git tag -l "<tag>"`.
+
+13. **Push (optional).** If `--push` was passed, run `git push` and `git push origin "<tag>"`; confirm.
+
+14. **Summary.** Report the version, the style used (conventional or house), the commit message, the tag created, and whether it was pushed.

@@ -1,9 +1,9 @@
 ---
 name: workflow-branch
-description: "Workflow utility: cut a working branch for the current task from a verified base, named after the repo's own convention"
+description: "Workflow utility: cut a working branch for the current task from a verified base, named after the repo's own convention. TRIGGER when the developer asks for a branch ('create a branch', 'cut a branch for DW-5', 'branch off develop'), when work starts on a keyed ticket while HEAD sits on a base branch ('let's implement DW-5' from main), or immediately after /workflow-clarify writes a fresh scratchpad. SKIP read-only branch questions ('what branch am I on', 'list branches'), a branch name mentioned in passing, and any time HEAD already carries the issue's key."
 argument-hint: "[<issue key or short title>] [--base <branch>]"
 model: sonnet
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Create a Working Branch
@@ -21,7 +21,7 @@ $ARGUMENTS
 Everything here is optional. A bare issue key or short title seeds the branch name;
 `--base <branch>` settles the base without asking.
 
-## 1. Gather context
+## 1. Gather context and confirm intent
 
 Stop with a one-line note if this is not a git repository.
 
@@ -100,19 +100,52 @@ Search every ref, local and remote — not just HEAD. A branch for this key sitt
 the remote is the case that actually costs something: cut a second one and the ticket's work
 splits across two branches that each look perfectly correct in isolation.
 
-- **HEAD is already on it** → say so and suggest staying put.
-- **It exists elsewhere** → name it, say how it sits relative to HEAD
-  (`git rev-list --left-right --count HEAD...<branch>`), and offer switching to it as a real
-  alternative to cutting a new one. Compare against HEAD rather than the base — step 2 has not
-  chosen a base yet.
+Record what turns up; the decision belongs to the gate below, not here.
 
-Let the developer answer either way — a second branch off the same ticket is a legitimate thing
-to want.
+- **HEAD is already on it** → note it. The gate will recommend staying put.
+- **It exists elsewhere** → note its name and how it sits relative to HEAD
+  (`git rev-list --left-right --count HEAD...<branch>`). Compare against HEAD rather than the
+  base — step 2 has not chosen a base yet. It becomes a row in the gate.
+
+A second branch off the same ticket is a legitimate thing to want, so an existing branch is never
+a reason to stop here — it is a row the developer can pick or ignore.
 
 Run the same search for the parent story's key when one turned up above. An existing story branch
 is the strongest reason in this skill not to cut anything: the subtask's work belongs on it, and
-cutting a sibling is how one story ends up with two half-finished branches. Offer switching to it
-first, with a new branch as the alternative rather than the default.
+cutting a sibling is how one story ends up with two half-finished branches. It leads the gate's
+rows for that reason.
+
+### Decide whether to branch
+
+Everything above is a read. This is the decision, and it happens **every time** — including when
+the developer typed `/workflow-branch` themselves.
+
+Unconditional is deliberate. A `SKILL.md` cannot tell how it was invoked: a bare typed
+`/workflow-branch` arrives with exactly the empty `$ARGUMENTS` an autonomous fire does, so "ask
+only when the model started this" is not something this file can express. What keeps it from
+being a pointless question to someone who just typed the command is that it is a decision menu,
+not a yes/no — the rows carry the findings from above, which they do not have yet.
+
+    DW-4 — "make workflow-branch model-invocable"
+    No existing branch carries this key.
+
+      1. Cut a new branch          → continues to the base and name questions
+      2. Stay on main
+
+Rows, in this order:
+
+1. **The parent story's branch**, when the search above found one — recommended, and first,
+   because the subtask's work belongs on it.
+2. **Any other branch carrying the key**, annotated with how it sits relative to HEAD.
+3. **Cut a new branch** — always present.
+4. **Stay on `<current branch>`** — always present, always last.
+
+When HEAD is *already* on a branch carrying the key, say so plainly and recommend staying; the
+work has somewhere to live, and a sibling would split it.
+
+**Staying put ends the skill.** Do not `git fetch origin`, do not run
+`git fetch origin <base>:<base>` (it moves a local ref), do not `git switch`, and do not write to
+the scratchpad. Report the branch HEAD is on and stop — nothing needs undoing afterwards.
 
 ## 2. Choose the base branch
 
@@ -281,6 +314,10 @@ Then ask how to proceed: stash → branch → pop, commit first (stopping here),
 branch. Do not stash on the developer's behalf — a `git stash pop` that conflicts drops them into
 a conflicted tree they never asked for, in the middle of a step they thought was about naming a
 branch.
+
+"Abandon the branch" here is the same answer as "stay put" at the §1 gate, arriving late — the
+developer has since chosen a base and a name. Treat it as such: stop, change nothing, and do not
+re-ask the gate's question.
 
 ## 6. Create it and record it
 

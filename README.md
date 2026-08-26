@@ -67,7 +67,7 @@ skills use `disable-model-invocation` — and dropping it would let an agent fir
 `/workflow-refactor` → `review` → `document` → `release`
 
 ### Utilities
-- `/workflow-branch [<issue key or short title>] [--base <branch>]` — cut a working branch from a freshly-fetched base, named after the repo's own convention. Usually run right after `clarify`, but works at any point — including with no `.workflow/` state at all
+- `/workflow-branch [<issue key or short title>] [--base <branch>]` — cut a working branch from a freshly-fetched base, named after the repo's own convention. Usually run right after `clarify`, but works at any point — including with no `.workflow/` state at all. This is the one workflow skill Claude can invoke on its own — when you ask for a branch, when work starts on a keyed ticket from a base branch, or straight after `clarify` — and it always asks before cutting, with a "stay put" option that touches nothing
 - `/workflow-status` — show progress and suggest the next step
 - `/workflow-learn` — Socratic teach-back until you can explain the change you shipped
 - `/workflow-jira-report [<JIRA-KEY>] [--dry-run]` — summarize the completed work and post it as a Jira ticket comment
@@ -85,6 +85,11 @@ read the repo's convention before composing: a commitlint config first, then rec
 subjects. Where Conventional Commits is in use the Task ID becomes the scope
 (`feat(PROJ-123): add retry backoff`); otherwise it stays a prefix (`PROJ-123: Add retry
 backoff`). When neither signal is present they ask — every time, recording nothing.
+
+**Nothing commits unapproved.** All three then show you the composed message — along with the
+tag and push target where those apply — and wait for `yes` / `edit` / `no`. An `edit` is taken
+verbatim as the whole subject line, so a wrong type or scope costs a retype rather than a
+re-run. No flag skips the gate; `--dry-run` stops before reaching it.
 
 ## State
 
