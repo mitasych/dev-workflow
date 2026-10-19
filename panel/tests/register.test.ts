@@ -228,7 +228,8 @@ test('the pane lists steps and plan steps on every surface', async ($, on) => {
     expect(await ui.find({ type: 'Text', text: /APP-12 · Add settings page/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Build the page/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Create the page component/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /~✅ 1 Add the route/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /~✅ 1/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Add the route/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Next: \/workflow-implement/ })).toBeDefined()
     await ui.unmount()
   }
@@ -366,7 +367,7 @@ test('a cramped inline pane still lists every plan step with its status', async 
     const ui = await $.ui.mount({ ...pane('inline', 6), surface })
 
     expect(await ui.find({ type: 'Text', text: /Implement/ })).toBeUndefined()
-    for (const step of [/⬜ 1 Add the route/, /⬜ 2 Build the page/, /⬜ 3 Link it from the menu/]) {
+    for (const step of [/⬜ 1/, /⬜ 2/, /⬜ 3/, /Add the route/, /Build the page/, /Link it from the menu/]) {
       expect(await ui.find({ type: 'Text', text: step })).toBeDefined()
     }
     expect(await ui.find({ type: 'Text', text: /Create the page component/ })).toBeUndefined()
@@ -437,9 +438,13 @@ test('a docked sidebar lists every review finding with its state', async ($, on)
   const ui = await $.ui.mount({ ...pane('dock', 40), surface: 'terminal' })
 
   expect(await ui.find({ type: 'Text', text: /Review \(2 open of 3\)/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /✅ C1 Crash on empty list/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /🟡 W1 Slow poll/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /🔵 S1 Rename the page/ })).toBeDefined()
+  // The marker and id are colored; the title is its own plain Text.
+  expect(await ui.find({ type: 'Text', text: /✅ C1/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Crash on empty list/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /🟡 W1/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Slow poll/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /🔵 S1/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Rename the page/ })).toBeDefined()
 })
 
 test('inline, settled findings fold into a count', async ($, on) => {
@@ -450,9 +455,166 @@ test('inline, settled findings fold into a count', async ($, on) => {
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...pane('inline', 8), surface })
 
-    expect(await ui.find({ type: 'Text', text: /🟡 W1 Slow poll/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /🟡 W1/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /C1 Crash on empty list/ })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /✅ 1 resolved/ })).toBeDefined()
     await ui.unmount()
   }
+})
+
+const CRITERIA = mid.replace(
+  '- [ ] Given the menu, Then Settings is listed',
+  [
+    '- [x] Given the menu, Then Settings is listed',
+    '- [x] Given a saved choice, Then it survives a reload',
+    '- [!] Given a bad value, Then the form says why',
+    '- [~] Given a narrow window, Then the page still fits',
+    '- [?] Given a screen reader, Then the page is announced',
+    '- [ ] Given a slow network, Then a spinner shows',
+  ].join('\n'),
+)
+
+test('a docked sidebar counts the five criterion states and lists every one not met', async ($, on) => {
+  world(on, { [SCRATCH]: CRITERIA })
+  mock.clock(on)
+  await $.session.start(START)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...pane('dock', 40), surface })
+
+    expect(await ui.find({ type: 'Text', text: /Criteria 2\/6/ })).toBeDefined()
+    for (const part of [/1 failed/, /1 partly/, /1 unverified/, /1 open/]) {
+      expect(await ui.find({ type: 'Text', text: part })).toBeDefined()
+    }
+    expect(await ui.find({ type: 'Text', text: /Criteria \(4 not met\)/ })).toBeDefined()
+    for (const text of [/the form says why/, /still fits/, /is announced/, /a spinner shows/]) {
+      expect(await ui.find({ type: 'Text', text })).toBeDefined()
+    }
+    expect(await ui.find({ type: 'Text', text: /Settings is listed/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /1 met/ })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('an inline pane lists only the failed and partly criteria', async ($, on) => {
+  world(on, { [SCRATCH]: CRITERIA })
+  mock.clock(on)
+  await $.session.start(START)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...pane('inline', 12), surface })
+
+    expect(await ui.find({ type: 'Text', text: /1 unverified/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /the form says why/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /still fits/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /is announced/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /a spinner shows/ })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('a scratchpad with only [ ] and [x] boxes reads as before', async ($, on) => {
+  const legacy = mid.replace(
+    '- [ ] Given the menu, Then Settings is listed',
+    '- [x] Given the menu, Then Settings is listed\n- [ ] Given a saved choice, Then it survives',
+  )
+  world(on, { [SCRATCH]: legacy })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ ...pane('dock', 40), surface: 'terminal' })
+
+  expect(await ui.find({ type: 'Text', text: /Criteria 1\/2/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /1 open/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Criteria \(1 not met\)/ })).toBeDefined()
+})
+
+test('no criteria section means no criteria line and no list', async ($, on) => {
+  const bare = mid.replace(/## Acceptance Criteria\n- \[ \] Given the menu, Then Settings is listed\n\n/, '')
+  world(on, { [SCRATCH]: bare })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ ...pane('dock', 40), surface: 'terminal' })
+
+  expect(await ui.find({ type: 'Text', text: /Plan \(3 steps\)/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Criteria/ })).toBeUndefined()
+})
+
+test('criteria counts take their state color, and the criterion text stays plain and truncated', async ($, on) => {
+  world(on, { [SCRATCH]: CRITERIA })
+  mock.clock(on)
+  await $.session.start(START)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...pane('dock', 40), surface })
+    const color = async (text: RegExp) => (await ui.find({ type: 'Text', text }))?.props.color
+
+    expect(await color(/Criteria 2\/6/)).toBe('warning')
+    expect(await color(/1 failed/)).toBe('error')
+    expect(await color(/1 partly/)).toBe('warning')
+    expect(await color(/1 unverified/)).toBe('suggestion')
+    expect(await color(/1 open/)).toBe('inactive')
+    expect(await color(/^❌ $/)).toBe('error')
+    expect(await color(/^🔍 $/)).toBe('suggestion')
+    expect(await ui.find({ type: 'Text', text: /🌓 1 partly/ })).toBeDefined()
+
+    const title = await ui.find({ type: 'Text', text: /the form says why/ })
+
+    expect(title?.props.color).toBeUndefined()
+    expect(title?.props.wrap).toBe('truncate')
+    await ui.unmount()
+  }
+})
+
+test('once every criterion is met the line turns green and the list goes away', async ($, on) => {
+  const met = mid.replace(
+    '- [ ] Given the menu, Then Settings is listed',
+    '- [x] Given the menu, Then Settings is listed\n- [x] Given a saved choice, Then it survives',
+  )
+  world(on, { [SCRATCH]: met })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ ...pane('dock', 40), surface: 'terminal' })
+
+  expect((await ui.find({ type: 'Text', text: /Criteria 2\/2/ }))?.props.color).toBe('success')
+  expect(await ui.find({ type: 'Text', text: /not met/ })).toBeUndefined()
+})
+
+test('inline, the criteria heading says how many of the unmet ones it lists', async ($, on) => {
+  world(on, { [SCRATCH]: CRITERIA })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const inline = await $.ui.mount({ ...pane('inline', 12), surface: 'terminal' })
+
+  expect(await inline.find({ type: 'Text', text: /Criteria \(2 of 4 not met\)/ })).toBeDefined()
+  await inline.unmount()
+
+  const docked = await $.ui.mount({ ...pane('dock', 40), surface: 'terminal' })
+
+  expect(await docked.find({ type: 'Text', text: /Criteria \(4 not met\)/ })).toBeDefined()
+})
+
+test('an inline pane with room for the plan shows its briefs', async ($, on) => {
+  world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const roomy = await $.ui.mount({ ...pane('inline', 16), surface: 'terminal' })
+
+  expect(await roomy.find({ type: 'Text', text: /Create the page component/ })).toBeDefined()
+  await roomy.unmount()
+})
+
+test('with failed and partly criteria listed, the same pane drops the briefs', async ($, on) => {
+  world(on, { [SCRATCH]: CRITERIA })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ ...pane('inline', 16), surface: 'terminal' })
+
+  expect(await ui.find({ type: 'Text', text: /the form says why/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Create the page component/ })).toBeUndefined()
 })

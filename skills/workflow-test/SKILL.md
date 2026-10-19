@@ -121,6 +121,22 @@ Provide a brief assessment:
 
 Don't chase coverage metrics — focus on whether the **important behaviors** are tested.
 
+#### Set the criteria markers
+
+Then set each item under `## Acceptance Criteria` in `.workflow/current-issue.md` to what the test
+results show. Change only the character inside the brackets, never the criterion's text.
+
+| Marker | State | Use when |
+|---|---|---|
+| `[x]` | met | the evidence shows the whole criterion holds |
+| `[!]` | failed | the evidence shows it is broken or missing |
+| `[~]` | partly | some of its Then-clauses hold, others do not or are untested |
+| `[?]` | unverified | no evidence either way; needs a manual look |
+| `[ ]` | open | not assessed |
+
+This run replaces any earlier marker, hand-set ones included. The evidence stays in the Coverage
+Assessment below.
+
 ### 7. Update scratchpad
 
 Append to `.workflow/current-issue.md`:

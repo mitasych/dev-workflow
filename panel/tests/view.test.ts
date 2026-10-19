@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { parseScratchpad } from '../hooks/parse'
-import { deriveView } from '../hooks/view'
+import { parseScratchpad } from '../parse'
+import { deriveView } from '../view'
 import dw2 from './fixtures/dw2'
 import mid from './fixtures/mid'
 import tdd from './fixtures/tdd'
@@ -87,7 +87,8 @@ describe('deriveView', () => {
     const v = deriveView(parseScratchpad(dw2), [], null)
 
     expect(v.steps.find(s => s.id === 'test')?.icon).toBe('⬜')
-    expect(v.criteria).toEqual({ done: 0, total: 8 })
+    expect(v.criteria.total).toBe(8)
+    expect(v.criteria.counts.open).toBe(8)
     expect(v.currentId).toBeNull()
     expect(v.next).toBeNull()
   })
@@ -96,5 +97,41 @@ describe('deriveView', () => {
     const v = deriveView(parseScratchpad(mid), [], null)
 
     expect([v.currentId, v.progress]).toEqual(['implement', ' 0/3'])
+  })
+
+  test('lists the criteria not met, worst first and in scratchpad order within a state', () => {
+    const md = [
+      '# Issue: x',
+      '## Acceptance Criteria',
+      '- [ ] open one',
+      '- [x] met one',
+      '- [?] unverified one',
+      '- [!] failed one',
+      '- [~] partly one',
+      '- [!] failed two',
+      '',
+    ].join('\n')
+    const v = deriveView(parseScratchpad(md), [], null)
+
+    expect(v.criteria.total).toBe(6)
+    expect(v.criteria.counts).toEqual({ open: 1, met: 1, unverified: 1, failed: 2, partly: 1 })
+    expect(v.criteria.pending.map(c => c.text)).toEqual([
+      'failed one',
+      'failed two',
+      'partly one',
+      'unverified one',
+      'open one',
+    ])
+  })
+
+  test('nothing is pending once every criterion is met, and a pre-marker snapshot is empty', () => {
+    const done = deriveView(parseScratchpad('# Issue: x\n## Acceptance Criteria\n- [x] a\n- [x] b\n'), [], null)
+
+    expect(done.criteria.pending).toEqual([])
+    expect(done.criteria.counts.met).toBe(2)
+
+    const old = { ...parseScratchpad(mid), criteria: { done: 1, total: 3 } } as unknown as Parameters<typeof deriveView>[0]
+
+    expect(deriveView(old, [], null).criteria.total).toBe(0)
   })
 })

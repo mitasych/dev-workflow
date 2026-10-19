@@ -26,6 +26,14 @@ export type Finding = {
   state: 'open' | 'fixed' | 'declined'
 }
 
+/** An acceptance criterion's checkbox: `[ ]` open, `[x]` met, `[?]` unverified, `[!]` failed, `[~]` partly. */
+export type CriterionState = 'open' | 'met' | 'unverified' | 'failed' | 'partly'
+
+export type Criterion = {
+  text: string
+  state: CriterionState
+}
+
 /** Progress a skill wrote itself: "X of Y" plus the blocked step numbers. */
 export type Written = { done: number; total: number; blocked: number[] }
 
@@ -38,7 +46,8 @@ export type Snapshot = {
   present: StepId[]
   /** Latest Code Review `**Verdict**` that no later fixes, test, document or release section answers. */
   verdict: string | null
-  criteria: { done: number; total: number }
+  /** The latest Acceptance Criteria checkboxes, in scratchpad order. */
+  criteria: Criterion[]
   plan: PlanItem[]
   written: Written | null
   /** Findings of the latest Code Review section. */

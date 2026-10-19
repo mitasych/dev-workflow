@@ -1,4 +1,4 @@
-import type { Finding, Mode, PlanItem, Snapshot, StepId, Written } from '../types'
+import type { Criterion, CriterionState, Finding, Mode, PlanItem, Snapshot, StepId, Written } from './types'
 
 export type StepDef = {
   id: StepId
@@ -31,7 +31,7 @@ export const emptySnapshot = (): Snapshot => ({
   mode: null,
   present: [],
   verdict: null,
-  criteria: { done: 0, total: 0 },
+  criteria: [],
   plan: [],
   written: null,
   findings: [],
@@ -178,12 +178,21 @@ const findings = (sections: readonly Section[]): Finding[] => {
   return out
 }
 
-const criteria = (sections: readonly Section[]): { done: number; total: number } => {
-  const s = lastOf(sections, '## Acceptance Criteria')
-  const boxes = (s?.lines ?? []).map(l => /^\s*[-*]\s+\[([ xX])\]/.exec(l)?.[1])
-  const marked = boxes.filter((b): b is string => b !== undefined)
-  return { done: marked.filter(b => b !== ' ').length, total: marked.length }
-}
+// The checkbox markers workflow-test and workflow-review write. Keep the three in step.
+const MARKER: Record<string, CriterionState> = { x: 'met', '?': 'unverified', '!': 'failed', '~': 'partly' }
+
+// One marker character at most, spaces allowed around it, so `[UI]` tags and `[link](url)` are no box.
+const BOX = /^\s*[-*]\s+\[\s?([^\]\s]?)\s?\](?!\()\s*(.*)$/
+
+/** An unknown marker counts as open rather than dropping out of the total. */
+const criteria = (sections: readonly Section[]): Criterion[] =>
+  (lastOf(sections, '## Acceptance Criteria')?.lines ?? []).flatMap(line => {
+    const m = BOX.exec(line)
+    if (!m) return []
+    const text = (m[2] ?? '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
+
+    return [{ text, state: MARKER[(m[1] ?? '').trim().toLowerCase()] ?? 'open' }]
+  })
 
 /** Reads a scratchpad into what the panel draws. Never throws: each part
  *  that cannot be read falls back to its empty value. */

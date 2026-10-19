@@ -111,6 +111,9 @@ In Claude Code, a band above the prompt shows it live;
                       Run /tui fullscreen once to get it as a
                       right sidebar (110+ columns); the classic
                       renderer puts it above the prompt.
+                      Criteria show as [x] met, [!] failed,
+                      [~] partly, [?] unverified, [ ] open;
+                      /workflow-test and /workflow-review set them.
   /workflow-learn     Teach the change via Socratic teach-back
                       until you can explain it (problem, solution,
                       impact). Writes .workflow/learning.md.

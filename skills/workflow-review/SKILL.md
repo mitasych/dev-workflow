@@ -41,6 +41,19 @@ Evaluate the changes across these dimensions, in priority order:
 - Are there logic errors, off-by-one mistakes, race conditions?
 - Are edge cases from the clarification handled?
 
+Then set each item under `## Acceptance Criteria` in `.workflow/current-issue.md` to what reading the
+code shows. Change only the character inside the brackets, never the criterion's text.
+
+| Marker | State | Use when |
+|---|---|---|
+| `[x]` | met | the evidence shows the whole criterion holds |
+| `[!]` | failed | the evidence shows it is broken or missing |
+| `[~]` | partly | some of its Then-clauses hold, others do not or are untested |
+| `[?]` | unverified | no evidence either way; needs a manual look |
+| `[ ]` | open | not assessed |
+
+This run replaces any earlier marker, hand-set ones included.
+
 #### b) Security
 
 - SQL injection, XSS, CSRF vulnerabilities

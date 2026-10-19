@@ -1,4 +1,4 @@
-import type { Finding, Mode, Snapshot, StepId } from '../types'
+import type { Criterion, CriterionState, Finding, Mode, Snapshot, StepId } from './types'
 import { WORKFLOW_STEPS } from './parse'
 
 export type Icon = '✅' | '🔄' | '⬜' | '❌'
@@ -19,6 +19,13 @@ export type PlanRow = {
   inferred: boolean
 }
 
+export type CriteriaView = {
+  total: number
+  counts: Record<CriterionState, number>
+  /** Every criterion not yet met, failed first, in scratchpad order within a state. */
+  pending: Criterion[]
+}
+
 export type View = {
   key: string | null
   title: string
@@ -27,7 +34,7 @@ export type View = {
   steps: StepRow[]
   planNoun: 'steps' | 'cycles'
   plan: PlanRow[]
-  criteria: { done: number; total: number }
+  criteria: CriteriaView
   findings: Finding[]
   next: string | null
   /** The step being worked or next up; null once released. */
@@ -37,6 +44,20 @@ export type View = {
 }
 
 const BUILD_STEPS: readonly StepId[] = ['implement', 'implement-green']
+
+// Not-met states, worst first.
+export const CRITERION_ORDER: readonly CriterionState[] = ['failed', 'partly', 'unverified', 'open']
+
+const criteriaView = (list: readonly Criterion[]): CriteriaView => {
+  const counts: Record<CriterionState, number> = { open: 0, met: 0, unverified: 0, failed: 0, partly: 0 }
+  for (const c of list) counts[c.state] += 1
+
+  return {
+    total: list.length,
+    counts,
+    pending: CRITERION_ORDER.flatMap(state => list.filter(c => c.state === state)),
+  }
+}
 
 const norm = (p: string): string => p.replace(/^\.\//, '')
 
@@ -110,7 +131,8 @@ export const deriveView = (
     steps,
     planNoun: snap.mode === 'tdd' ? 'cycles' : 'steps',
     plan,
-    criteria: snap.criteria,
+    // A snapshot kept from before the five markers still holds `{ done, total }`.
+    criteria: criteriaView(Array.isArray(snap.criteria) ? snap.criteria : []),
     findings: snap.findings,
     currentId: current?.id ?? null,
     progress,

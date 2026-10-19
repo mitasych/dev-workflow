@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { emptySnapshot, parseScratchpad } from '../hooks/parse'
+import { emptySnapshot, parseScratchpad } from '../parse'
 import dw2 from './fixtures/dw2'
 import dw3 from './fixtures/dw3'
 import dw4 from './fixtures/dw4'
@@ -16,7 +16,8 @@ describe('parseScratchpad', () => {
     expect(s.branch).toBe('feature/DW-2_agent-plugins-compatibility')
     expect(s.mode).toBe('regular')
     expect(s.present).toEqual(['clarify', 'plan', 'implement', 'review', 'release'])
-    expect(s.criteria).toEqual({ done: 0, total: 8 })
+    expect(s.criteria).toHaveLength(8)
+    expect(s.criteria.every(c => c.state === 'open')).toBe(true)
     expect(s.plan.map(p => p.n)).toEqual([1, 2, 3, 4, 5])
     expect(s.written).toEqual({ done: 5, total: 5, blocked: [] })
   })
@@ -52,7 +53,7 @@ describe('parseScratchpad', () => {
     expect(first?.files).toEqual(['skills/workflow-branch/SKILL.md'])
     // A numbered heading in the text is not the end of the sentence.
     expect(third?.brief.startsWith('Retitle `## 1.')).toBe(true)
-    expect(s.criteria.total).toBe(16)
+    expect(s.criteria).toHaveLength(16)
     expect(s.written?.done).toBe(8)
   })
 
@@ -83,7 +84,8 @@ describe('parseScratchpad', () => {
 
     expect(s.mode).toBe('tdd')
     expect(s.present).toEqual(['clarify', 'plan', 'test-red', 'implement-green'])
-    expect(s.criteria).toEqual({ done: 1, total: 3 })
+    expect(s.criteria).toHaveLength(3)
+    expect(s.criteria.filter(c => c.state === 'met')).toHaveLength(1)
     expect(s.plan.map(p => p.title)).toEqual(['Retries on 503', 'Waits with backoff', 'Gives up after five'])
     expect(s.plan[0]?.brief).toBe('Loop up to 3 times when the status is 503.')
     expect(s.plan[1]?.brief).toBe('Sleep 2^n seconds between attempts.')
@@ -142,6 +144,66 @@ describe('parseScratchpad', () => {
     const md = '# Issue: x\n## Code Review\n- [W1] Thing — `a.ts`\n## Test Status\nW1 covered by tests\n'
 
     expect(parseScratchpad(md).findings[0]?.state).toBe('open')
+  })
+
+  test('reads the five checkbox markers, and counts an unknown one as open', () => {
+    const md = [
+      '# Issue: x',
+      '## Acceptance Criteria',
+      '- [ ] Given a, Then open',
+      '- [x] Given b, Then met',
+      '- [X] Given c, Then **met** too',
+      '- [?] Given d, Then unverified',
+      '- [!] Given e, Then failed',
+      '- [~] Given f, Then   partly',
+      '- [-] Given g, Then unknown marker',
+      '- [link](https://example.com) is no box',
+      '- plain bullet, no box',
+      '',
+    ].join('\n')
+    const c = parseScratchpad(md).criteria
+
+    expect(c.map(x => x.state)).toEqual(['open', 'met', 'met', 'unverified', 'failed', 'partly', 'open'])
+    expect(c[2]?.text).toBe('Given c, Then met too')
+    expect(c[5]?.text).toBe('Given f, Then partly')
+  })
+
+  test('a two-letter tag or a link is no checkbox, and spaces around the marker are fine', () => {
+    const md = [
+      '# Issue: x',
+      '## Acceptance Criteria',
+      '- [UI] Given a tag, Then no box',
+      '- [P1] Given a priority, Then no box',
+      '- [X ] Given a spaced marker, Then met',
+      '- [] Given an empty box, Then open',
+      '',
+    ].join('\n')
+
+    expect(parseScratchpad(md).criteria).toEqual([
+      { text: 'Given a spaced marker, Then met', state: 'met' },
+      { text: 'Given an empty box, Then open', state: 'open' },
+    ])
+  })
+
+  test('criteria come from the latest Acceptance Criteria section only', () => {
+    const md = '# Issue: x\n## Acceptance Criteria\n- [ ] old\n## Plan\n## Acceptance Criteria\n- [x] new\n'
+
+    expect(parseScratchpad(md).criteria).toEqual([{ text: 'new', state: 'met' }])
+    expect(parseScratchpad('# Issue: x\n- [x] outside any section\n').criteria).toEqual([])
+  })
+
+  test('the criteria totals of the archived scratchpads match the two-state parser they replaced', () => {
+    // [met, total] counted with the old `[ xX]`-only reader
+    const was = { dw2: [0, 8], dw3: [0, 14], dw4: [0, 16], mid: [0, 1], tdd: [1, 3] } as const
+    const now = Object.fromEntries(
+      Object.entries({ dw2, dw3, dw4, mid, tdd }).map(([name, md]) => {
+        const c = parseScratchpad(md).criteria
+
+        return [name, [c.filter(x => x.state === 'met').length, c.length]]
+      }),
+    )
+
+    expect(now).toEqual(was)
   })
 
   test('falls back to empty values and never throws on odd input', () => {

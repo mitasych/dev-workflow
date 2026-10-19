@@ -102,14 +102,15 @@ stored in plugin data.
 
 ## Status panel (Claude Code only)
 
-A small Claude Code mod (`hooks/`) watches `.workflow/current-issue.md` and draws it, with no model
-calls. Agent Plugins defines no `hooks/` location, so Cursor, Codex, and Copilot are not expected to
-read it; the skills work there unchanged, without the panel.
+A small Claude Code mod, kept whole in `panel/`, watches `.workflow/current-issue.md` and draws it,
+with no model calls. Only the Claude Code manifest points at it (`hooks`, `types`), so Cursor, Codex,
+and Copilot do not read it; the skills work there unchanged, without the panel.
 
 - **Band** — always above the prompt while a scratchpad exists: the issue, then the workflow steps
   (Regular or TDD, per the plan's mode) as `✓clarify ✓plan ▸implement ~3/5 ·review …` — ✓ done,
   ▸ current (with plan progress while building), ✗ failed, · pending.
-- **Panel** — `/workflow-panel` shows or hides the detail: acceptance-criteria progress, every plan
+- **Panel** — `/workflow-panel` shows or hides the detail: acceptance-criteria progress (a count per
+  state, then each criterion not yet met), every plan
   step with its status (plus a one-line brief when there is room), and the latest review's findings
   — 🔴/🟡/🔵 while open, ✅ once a later `## Review Fixes` section names them, ➖ where it says they
   were declined. It is a **right sidebar** in Claude Code's fullscreen renderer at 110+ columns —
@@ -117,6 +118,11 @@ read it; the skills work there unchanged, without the panel.
   renderer, or a narrower terminal, it sits above the prompt and lists only open findings. The
   command says which it got and what to change.
 - **`autoOpen`** (plugin option, default off) — open the panel on the first `/workflow-*` skill of a session.
+- **Criteria markers** — `/workflow-test` and `/workflow-review` set the checkbox of each item under
+  `## Acceptance Criteria`: `[x]` met, `[!]` failed, `[~]` partly, `[?]` unverified, `[ ]` open. Only the
+  bracket character changes, and the latest run wins, hand-set ticks included. The panel shows them as
+  ✅ met, ❌ failed, 🌓 partly, 🔍 unverified, ⬜ open — a colored count line, then each criterion not met.
+  A scratchpad with only `[ ]` and `[x]` boxes counts as before.
 
 Status is either *confirmed* — what a skill wrote (`Steps completed: X of Y`, `Blocked steps`) — or
 *inferred*, shown dim with a `~`: a plan step whose `**Files**` were edited this session. A skill's own
@@ -131,9 +137,11 @@ lists, so the panel then refreshes from file edits and a 3-second poll instead o
 ~/.claude/skills/dev-workflow/
   plugin.json                    # portable manifest (Agent Plugins 1.0.0)
   .claude-plugin/plugin.json     # Claude Code manifest (name, version, "skills": "./skills/")
-  hooks/                         # Claude Code mod: hooks.json, register.tsx, parse.ts, view.ts
-  types/index.d.ts               # the mod's $.state contract
-  tests/                         # parser, view, and module tests (claude plugin test .)
+  panel/                         # Claude Code mod (status band + panel), all of it:
+    hooks.json                   #   names register.tsx; the manifest's "hooks" points here
+    register.tsx parse.ts view.ts
+    types.d.ts                   #   the mod's $.state contract (manifest "types")
+    tests/                       #   parser, view, and module tests (claude plugin test .)
   skills/
     workflow-clarify/SKILL.md
     workflow-plan/SKILL.md

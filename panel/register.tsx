@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { Hook, Register } from 'claude-code'
 
-import type { Finding, StepId } from '../types'
+import type { CriterionState, Finding, StepId } from './types'
 import { WORKFLOW_STEPS, parseScratchpad } from './parse'
-import { deriveView } from './view'
-import type { StepRow } from './view'
+import { CRITERION_ORDER, deriveView } from './view'
+import type { Icon, StepRow } from './view'
 
 type Api = Parameters<Hook<'session.start'>>[0]
 
@@ -41,6 +41,36 @@ const bandState = (s: StepRow, currentId: StepId | null): keyof typeof BAND =>
 
 const findingIcon = (f: Finding): string =>
   f.state === 'fixed' ? '✅' : f.state === 'declined' ? '➖' : (SEVERITY[f.id.charAt(0)] ?? '•')
+
+// The pane's colors, as theme keys so they follow the person's theme.
+const TONE = {
+  title: 'permission',
+  heading: 'suggestion',
+  meta: 'subtle',
+  next: 'claude',
+  empty: 'subtle',
+} as const
+
+const STEP_TONE: Record<Icon, string> = { '✅': 'success', '🔄': 'warning', '⬜': 'inactive', '❌': 'error' }
+
+const CRITERION_TONE: Record<CriterionState, string> = {
+  met: 'success',
+  failed: 'error',
+  partly: 'warning',
+  unverified: 'suggestion',
+  open: 'inactive',
+}
+
+// The breakdown line names each mark, so it doubles as the legend.
+const CRITERION_MARK: Record<CriterionState, string> = { met: '✅', failed: '❌', partly: '🌓', unverified: '🔍', open: '⬜' }
+
+// Inline, the room goes to the criteria that are broken or half done.
+const isUrgent = (state: CriterionState): boolean => state === 'failed' || state === 'partly'
+
+const SEVERITY_TONE: Record<string, string> = { C: 'error', W: 'warning', S: 'suggestion' }
+
+const findingTone = (f: Finding): string =>
+  f.state === 'fixed' ? 'success' : f.state === 'declined' ? 'inactive' : (SEVERITY_TONE[f.id.charAt(0)] ?? 'text')
 
 // Module state: starts over with each reload, like the module's other variables.
 let root: string | null = null
@@ -92,7 +122,10 @@ const refresh = async ($: Api, isForced = false): Promise<void> => {
 const openPane = async ($: Api) => {
   const snap = await read($, snapshot)
   const open = snap?.findings.filter(f => f.state === 'open').length ?? 0
-  const rows = Math.min(40, 9 + (snap?.plan.length ?? 0) + (open > 0 ? open + 2 : 0))
+  // A snapshot kept from before the five markers is not a list yet.
+  const list = snap?.criteria
+  const urgent = Array.isArray(list) ? list.filter(c => isUrgent(c.state)).length : 0
+  const rows = Math.min(40, 9 + (snap?.plan.length ?? 0) + (open > 0 ? open + 2 : 0) + (urgent > 0 ? urgent + 2 : 0))
 
   return $.ui.open({ id: PANE, title: 'Workflow', rows, columns: DOCK_COLUMNS })
 }
@@ -202,7 +235,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        <Text weight="bold" wrap="truncate">
+        <Text weight="bold" color={TONE.title} wrap="truncate">
           {[view.key, view.title].filter(Boolean).join(' · ')}
         </Text>
         <Box gap={1} flexWrap="wrap">
@@ -226,51 +259,74 @@ export const register: Register = (on, options) => {
     const snap = await read($, snapshot)
 
     if (!snap) {
-      return <Text dimColor>No active workflow — start with /workflow-clarify</Text>
+      return <Text color={TONE.empty}>No active workflow — start with /workflow-clarify</Text>
     }
 
     const view = deriveView(snap, await read($, edits), await read($, active))
     // The band carries the workflow steps; the pane is the detail. Every plan
     // step is listed (the pane scrolls), briefs only when they fit.
     const isDocked = e.props.placement === 'dock'
-    const fixed = 8
-    const hasBrief = fixed + view.plan.length * 2 <= e.props.scroll.bodyRows
     // Inline, settled findings fold into a count so the open ones keep the room.
     const openFindings = view.findings.filter(f => f.state === 'open')
     const listed = isDocked ? view.findings : openFindings
     const settled = view.findings.length - listed.length
+    const { criteria } = view
+    const met = criteria.counts.met
+    const unmet = criteria.total - met
+    const pending = isDocked ? criteria.pending : criteria.pending.filter(c => isUrgent(c.state))
+    // Each list below the plan costs a blank line and a heading too.
+    const lists =
+      (view.findings.length > 0 ? listed.length + 2 + (settled > 0 ? 1 : 0) : 0) +
+      (pending.length > 0 ? pending.length + 2 : 0)
+    const fixed = 8
+    const hasBrief = fixed + view.plan.length * 2 + lists <= e.props.scroll.bodyRows
     const subtitle = [view.mode === 'tdd' ? 'TDD' : view.mode === 'regular' ? 'Regular' : null, view.branch]
       .filter(Boolean)
       .join(' · ')
 
     return (
       <Box flexDirection="column">
-        <Text weight="bold" wrap="truncate">
+        <Text weight="bold" color={TONE.title} wrap="truncate">
           {view.key ? `${view.key} · ` : ''}
           {view.title}
         </Text>
         {subtitle !== '' && (
-          <Text dimColor wrap="truncate">
+          <Text color={TONE.meta} wrap="truncate">
             {subtitle}
           </Text>
         )}
-        {view.criteria.total > 0 && (
-          <Text dimColor>
-            Criteria {view.criteria.done}/{view.criteria.total}
-          </Text>
+        {criteria.total > 0 && (
+          <Box gap={1} flexWrap="wrap">
+            <Text color={met === criteria.total ? 'success' : 'warning'}>
+              Criteria {met}/{criteria.total}
+            </Text>
+            {CRITERION_ORDER.filter(state => criteria.counts[state] > 0).map(state => (
+              <Text key={state} color={CRITERION_TONE[state]}>
+                · {CRITERION_MARK[state]} {criteria.counts[state]} {state}
+              </Text>
+            ))}
+          </Box>
         )}
         {view.plan.length > 0 && (
           <Box flexDirection="column">
             <Text> </Text>
-            <Text weight="bold">Plan ({view.plan.length} {view.planNoun})</Text>
+            <Text weight="bold" color={TONE.heading}>
+              Plan ({view.plan.length} {view.planNoun})
+            </Text>
             {view.plan.map(r => (
               <Box key={String(r.n)} flexDirection="column">
-                <Text dimColor={r.inferred} wrap="truncate">
-                  {r.inferred ? '~' : ''}
-                  {r.icon} {r.n} {r.title}
-                </Text>
+                <Box flexDirection="row">
+                  <Text color={STEP_TONE[r.icon]}>
+                    {r.inferred ? '~' : ''}
+                    {r.icon} {r.n}
+                    {' '}
+                  </Text>
+                  <Text dimColor={r.inferred} wrap="truncate">
+                    {r.title}
+                  </Text>
+                </Box>
                 {hasBrief && r.brief !== '' && (
-                  <Text dimColor wrap="truncate">
+                  <Text color={TONE.meta} dimColor wrap="truncate">
                     {'    '}
                     {r.brief}
                   </Text>
@@ -282,21 +338,41 @@ export const register: Register = (on, options) => {
         {view.findings.length > 0 && (
           <Box flexDirection="column">
             <Text> </Text>
-            <Text weight="bold">
+            <Text weight="bold" color={TONE.heading}>
               Review ({openFindings.length} open of {view.findings.length})
             </Text>
             {listed.map(f => (
-              <Text key={f.id} dimColor={f.state !== 'open'} wrap="truncate">
-                {findingIcon(f)} {f.id} {f.title}
-              </Text>
+              <Box key={f.id} flexDirection="row">
+                <Text color={findingTone(f)}>
+                  {findingIcon(f)} {f.id}
+                  {' '}
+                </Text>
+                <Text wrap="truncate">{f.title}</Text>
+              </Box>
             ))}
-            {settled > 0 && <Text dimColor>✅ {settled} resolved</Text>}
+            {settled > 0 && <Text color="success">✅ {settled} resolved</Text>}
+          </Box>
+        )}
+        {pending.length > 0 && (
+          <Box flexDirection="column">
+            <Text> </Text>
+            <Text weight="bold" color={TONE.heading}>
+              Criteria ({pending.length < unmet ? `${pending.length} of ${unmet}` : unmet} not met)
+            </Text>
+            {pending.map((c, i) => (
+              <Box key={String(i)} flexDirection="row">
+                <Text color={CRITERION_TONE[c.state]}>{CRITERION_MARK[c.state]} </Text>
+                <Text wrap="truncate">{c.text}</Text>
+              </Box>
+            ))}
           </Box>
         )}
         {view.next !== null && (
           <Box flexDirection="column">
             <Text> </Text>
-            <Text wrap="truncate">➡ Next: {view.next}</Text>
+            <Text color={TONE.next} wrap="truncate">
+              ➡ Next: {view.next}
+            </Text>
           </Box>
         )}
       </Box>

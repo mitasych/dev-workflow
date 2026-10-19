@@ -63,7 +63,7 @@ Keep it **brief** — a stakeholder-readable status update, not a diff dump. Tar
 *Tests:* <what was run and the result, or "not run">
 *Branch:* <branch> (<N> commits, <N> files changed)
 *Status:* <e.g. Ready for review / Merged / Blocked by ...>
-*Open items:* <unresolved acceptance criteria, review findings, or "none">
+*Open items:* <acceptance criteria not marked `[x]` (`[!]` failed, `[~]` partly, `[?]` unverified, `[ ]` open), review findings, or "none">
 ```
 
 Use Jira wiki markup (`*bold*`, `*` bullets), not GitHub Markdown. Plain prose is fine if the

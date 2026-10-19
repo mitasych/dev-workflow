@@ -14,8 +14,8 @@ for key, name in [('DW-2', 'dw2'), ('DW-3', 'dw3'), ('DW-4', 'dw4')]:
     for old, new in REPL:
         body = body.replace(old, new)
     head = (f'// .workflow/{key}-issue.md with contact details and hosts replaced, for parser tests.\n'
-            '// Regenerate with the script in tests/fixtures/README.md.\n')
-    open(f'tests/fixtures/{name}.ts', 'w').write(head + 'export default ' + json.dumps(body) + '\n')
+            '// Regenerate with the script in panel/tests/fixtures/README.md.\n')
+    open(f'panel/tests/fixtures/{name}.ts', 'w').write(head + 'export default ' + json.dumps(body) + '\n')
 PY
 ```
 
