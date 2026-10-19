@@ -30,7 +30,7 @@ Scan the scratchpad for these status sections and determine what's done:
 | `## Code Review`            | `/workflow-review`                |
 | `## Test Status`            | `/workflow-test` (Regular)        |
 | `## Documentation Status`   | `/workflow-document`              |
-| `## Release`                | `/release`                        |
+| `## Release`                | `/workflow-release`               |
 
 ### 3. Detect workflow mode
 

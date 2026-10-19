@@ -70,6 +70,7 @@ skills use `disable-model-invocation` — and dropping it would let an agent fir
 ### Utilities
 - `/workflow-branch [<issue key or short title>] [--base <branch>]` — cut a working branch from a freshly-fetched base, named after the repo's own convention. Usually run right after `clarify`, but works at any point — including with no `.workflow/` state at all. This is the one workflow skill Claude can invoke on its own — when you ask for a branch, when work starts on a keyed ticket from a base branch, or straight after `clarify` — and it always asks before cutting, with a "stay put" option that touches nothing
 - `/workflow-status` — show progress and suggest the next step
+- `/workflow-panel` — show or hide a live side panel of the current issue's steps and plan steps (Claude Code only). It docks as a right sidebar in the fullscreen renderer — run `/tui fullscreen` once — and sits above the prompt otherwise; see [Status panel](#status-panel-claude-code-only)
 - `/workflow-learn` — Socratic teach-back until you can explain the change you shipped
 - `/workflow-jira-report [<JIRA-KEY>] [--dry-run]` — summarize the completed work and post it as a Jira ticket comment
 - `/learn-code [--file <path> | --module <dir> | --commit <hash> | --range <a>..<b>] [--source ...]` — standalone Socratic teacher for any existing file, module, commit, or commit range (not tied to the workflow or `.workflow/` state)
@@ -99,12 +100,40 @@ the full context of prior steps. `clarify` also creates `.workflow/.gitignore` (
 state is never committed. This is **project-local** state by design — intentionally not
 stored in plugin data.
 
+## Status panel (Claude Code only)
+
+A small Claude Code mod (`hooks/`) watches `.workflow/current-issue.md` and draws it, with no model
+calls. Agent Plugins defines no `hooks/` location, so Cursor, Codex, and Copilot are not expected to
+read it; the skills work there unchanged, without the panel.
+
+- **Band** — always above the prompt while a scratchpad exists: the issue, then the workflow steps
+  (Regular or TDD, per the plan's mode) as `✓clarify ✓plan ▸implement ~3/5 ·review …` — ✓ done,
+  ▸ current (with plan progress while building), ✗ failed, · pending.
+- **Panel** — `/workflow-panel` shows or hides the detail: acceptance-criteria progress, every plan
+  step with its status (plus a one-line brief when there is room), and the latest review's findings
+  — 🔴/🟡/🔵 while open, ✅ once a later `## Review Fixes` section names them, ➖ where it says they
+  were declined. It is a **right sidebar** in Claude Code's fullscreen renderer at 110+ columns —
+  switch with `/tui fullscreen`, or start with `CLAUDE_CODE_NO_FLICKER=1 claude`. In the classic
+  renderer, or a narrower terminal, it sits above the prompt and lists only open findings. The
+  command says which it got and what to change.
+- **`autoOpen`** (plugin option, default off) — open the panel on the first `/workflow-*` skill of a session.
+
+Status is either *confirmed* — what a skill wrote (`Steps completed: X of Y`, `Blocked steps`) — or
+*inferred*, shown dim with a `~`: a plan step whose `**Files**` were edited this session. A skill's own
+status replaces the guess once written. Edits made through `Bash`, or outside the session, aren't seen.
+
+Where an organization manages Claude Code, hooks on `skill.prompt` only run for plugins the organization
+lists, so the panel then refreshes from file edits and a 3-second poll instead of on skill start.
+
 ## Layout
 
 ```
 ~/.claude/skills/dev-workflow/
   plugin.json                    # portable manifest (Agent Plugins 1.0.0)
   .claude-plugin/plugin.json     # Claude Code manifest (name, version, "skills": "./skills/")
+  hooks/                         # Claude Code mod: hooks.json, register.tsx, parse.ts, view.ts
+  types/index.d.ts               # the mod's $.state contract
+  tests/                         # parser, view, and module tests (claude plugin test .)
   skills/
     workflow-clarify/SKILL.md
     workflow-plan/SKILL.md

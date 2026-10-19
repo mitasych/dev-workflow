@@ -39,6 +39,8 @@ from issue intake to versioned release.
 
 State is stored in .workflow/current-issue.md (gitignored).
 Use /workflow-status at any point to see where you are.
+In Claude Code, a band above the prompt shows it live;
+/workflow-panel adds a side panel with the details.
 
 ──────────────────────────────────────────────────
   REGULAR PATH
@@ -98,6 +100,17 @@ Use /workflow-status at any point to see where you are.
                       or straight after clarify. It always asks
                       before cutting; "stay put" changes nothing.
   /workflow-status    Show progress and suggest next step
+  /workflow-panel     Show or hide a live side panel with the
+                      current issue's plan steps and their
+                      status, criteria progress, and the latest
+                      review's findings (open, fixed, declined).
+                      Claude Code only. The workflow steps stay
+                      in a band above the prompt either way;
+                      set autoOpen to have the panel open on
+                      the first /workflow-* skill.
+                      Run /tui fullscreen once to get it as a
+                      right sidebar (110+ columns); the classic
+                      renderer puts it above the prompt.
   /workflow-learn     Teach the change via Socratic teach-back
                       until you can explain it (problem, solution,
                       impact). Writes .workflow/learning.md.
@@ -214,6 +227,7 @@ Use the table below as the source of truth:
 | `document` | Update docs and CHANGELOG draft | scratchpad | `## Documentation Status` | Sonnet | `release` |
 | `release` | Version bump, tag, push — message and tag approved by you before the commit | scratchpad + CHANGELOG + repo commit convention | `## Release` | Sonnet | — |
 | `status` | Show progress, suggest next step | scratchpad | _(read-only)_ | Sonnet | — |
+| `panel` | Live side panel of plan steps and review findings, beside an always-on band of workflow steps (`/workflow-panel`, Claude Code only; a right sidebar under `/tui fullscreen`) | scratchpad + this session's file edits | _(read-only)_ | — (mod, no model) | — |
 | `learn` | Verify understanding via Socratic teach-back | scratchpad + diff | `.workflow/learning.md` | **Opus** | — |
 | `jira-report` | Post a brief work report as a Jira comment (`/workflow-jira-report`) | scratchpad + git log/diff | `## Jira Report` _(+ Jira comment)_ | Sonnet | — |
 | `commit` | Stage + single-line commit, Conventional or Task-ID-prefixed, approved by you before it lands (`/workflow-commit`) | branch + staged diff + repo commit convention | _(git commit)_ | Sonnet | — |
