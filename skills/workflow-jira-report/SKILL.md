@@ -63,11 +63,13 @@ Keep it **brief** — a stakeholder-readable status update, not a diff dump. Tar
 *Tests:* <what was run and the result, or "not run">
 *Branch:* <branch> (<N> commits, <N> files changed)
 *Status:* <e.g. Ready for review / Merged / Blocked by ...>
-*Open items:* <acceptance criteria not marked `[x]` (`[!]` failed, `[~]` partly, `[?]` unverified, `[ ]` open), review findings, or "none">
+*Open items:* <each acceptance criterion not marked `[x]`, with its state as a word — failed, partly, unverified or open — then review findings, or "none">
 ```
 
 Use Jira wiki markup (`*bold*`, `*` bullets), not GitHub Markdown. Plain prose is fine if the
 MCP tool expects ADF — do not hand-roll ADF JSON.
+Never copy a checkbox marker such as `[!]` or `[~]` into the comment: wiki markup reads `[…]` as a
+link and `[~…]` as a user mention.
 
 ### 4. Confirm and post
 
