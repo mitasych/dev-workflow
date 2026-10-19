@@ -8,14 +8,46 @@ it in.
 
 ## How it loads
 
-This folder lives in a personal skills directory, so Claude Code auto-loads it every
-session as the plugin **`dev-workflow@skills-dir`** — no `/plugin install` step. Every
-step but one has `disable-model-invocation: true`, so you invoke it explicitly (e.g.
+### Install as a plugin
+
+The repository is its own marketplace (`.claude-plugin/marketplace.json`). At the prompt of a
+terminal session:
+
+```
+/plugin install dev-workflow --marketplace https://gitlab.wiz-team.com/ai-tools/dev-workflow.git
+```
+
+Answer `y` to add the marketplace, then pick a scope (user is the default). From a shell, the same
+line is `claude plugin install dev-workflow --marketplace <url>`. With an SSH key rather than an
+HTTPS credential, use `ssh://git@gitlab.wiz-team.com:2233/ai-tools/dev-workflow.git`. The install
+never prompts for a credential, so the machine must already hold one for that host.
+
+It then loads as **`dev-workflow@dev-workflow`** from the copy the install made.
+
+**Updates.** A new release reaches an install only when the manifest `version` changes — every
+release bumps it. Auto-update is off by default for marketplaces outside Anthropic's own; turn it on
+in `/plugin` → **Marketplaces** → `dev-workflow` → **Enable auto-update** (or `"autoUpdate": true` on
+the marketplace's `extraKnownMarketplaces` entry in settings). It then runs in the background after
+the first message of a session, and `/reload-plugins` applies it. By hand:
+`claude plugin update dev-workflow@dev-workflow`, then `/reload-plugins`. Background updates use
+your git credential without prompting, so keep an SSH key in the agent or a stored HTTPS credential.
+
+### Or from a skills directory
+
+Cloned into a personal skills directory (`~/.claude/skills/dev-workflow`), Claude Code
+auto-loads it every session as **`dev-workflow@skills-dir`**, with no install step, and edits take
+effect in new sessions.
+
+**Use one or the other.** With both present, the installed copy wins and the skills-directory copy
+shows as *Not loaded* in `/plugin` — so edits to the folder stop taking effect. Uninstall one, or
+move the folder out of the skills directory.
+
+Every step but one has `disable-model-invocation: true`, so you invoke it explicitly (e.g.
 `/workflow-clarify`). The exception is `/workflow-branch`, which Claude may offer on its
 own — and which always asks before cutting anything.
 
-To confirm it loaded: `/plugin` → look for `dev-workflow@skills-dir`, or just type
-`/workflow-` and check the completions.
+To confirm it loaded: `/plugin` → look for `dev-workflow@dev-workflow` (or `@skills-dir`), or
+just type `/workflow-` and check the completions.
 
 ### Other agents
 
