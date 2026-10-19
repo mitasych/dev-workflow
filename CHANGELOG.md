@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Fixed
+
+- `/workflow-jira-report` writes each open acceptance criterion's state as a word — failed, partly,
+  unverified or open — instead of copying its checkbox marker, which Jira's wiki markup would read
+  as a link (`[!]`) or a user mention (`[~]`).
+
 ## [1.10.0] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
