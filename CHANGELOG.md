@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Added
+
+- **Acceptance criteria that move.** The panel's `Criteria` line used to stay at `0/N` because no
+  skill ticked the boxes. `/workflow-test` and `/workflow-review` now set each item under
+  `## Acceptance Criteria` from their evidence, changing only the bracket character:
+  `[x]` met, `[!]` failed, `[~]` partly, `[?]` unverified, `[ ]` open. The latest run wins,
+  hand-set ticks included. A scratchpad with only `[ ]` and `[x]` boxes counts as before.
+- In the panel, a colored count per state (`Criteria 12/19 · ❌ 1 failed · 🌓 2 partly · 🔍 3
+  unverified · ⬜ 1 open`), then each criterion not met, marked ✅ ❌ 🌓 🔍 ⬜. Docked lists all of
+  them; inline lists the failed and partly ones, and says so (`2 of 4 not met`).
+
+### Changed
+
+- The panel is in color — headings, plan-step marks, review findings by severity and criteria by
+  state — and follows the terminal theme. Plan-step names, finding titles and criterion text stay
+  plain.
+- `/workflow-jira-report` names the five markers in *Open items*, so a `[~]` or `[?]` criterion is
+  reported as open rather than resolved.
+- The status-panel mod now lives in one folder, `panel/` (hooks module, types, tests, fixtures).
+  `.claude-plugin/plugin.json` points at it with `hooks` and `types`; the root `plugin.json` is
+  unchanged.
+- Inline, plan-step briefs give way sooner when the review and criteria lists need the room.
+
 ## [1.9.0] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
