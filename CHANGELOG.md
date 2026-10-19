@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Added
+
+- Install it as a Claude Code plugin, not only from a skills directory: the repository is its own
+  marketplace (`.claude-plugin/marketplace.json`).
+  `/plugin install dev-workflow --marketplace https://gitlab.wiz-team.com/ai-tools/dev-workflow.git`
+  (or the `ssh://` URL). The README covers updates — a release reaches an install only through a
+  `version` bump, and auto-update is off by default for this marketplace — and that an installed
+  copy takes precedence over a skills-directory one.
+
 ## [1.10.1] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Fixed
