@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Added
+
+- A live view of the current issue in Claude Code, with no model calls, read from
+  `.workflow/current-issue.md`. It is Claude Code only: the skills work unchanged elsewhere, and
+  Agent Plugins defines no `hooks/` location for other clients to read.
+  - **A band above the prompt**, always on while a scratchpad exists: the issue, then each
+    workflow step — Regular or TDD, per the plan's mode — marked done (`✓`), current (`▸`, with
+    plan progress such as `~3/5` while building), failed (`✗`) or pending (`·`).
+  - **`/workflow-panel`**, which shows or hides the detail: acceptance-criteria progress, every
+    plan step with its status and a one-line brief, and the latest review's findings — open
+    (`🔴`/`🟡`/`🔵`), fixed (`✅`, once a later `## Review Fixes` section names them) or declined
+    (`➖`). It docks as a right sidebar in the fullscreen renderer at 110+ columns (`/tui
+    fullscreen`); in the classic renderer it sits above the prompt, and the command says which it
+    got and what to change.
+  - **`autoOpen`**, a plugin option (default off) that opens the panel on the first `/workflow-*`
+    skill of a session.
+  - Status is *confirmed* when a skill wrote it (`Steps completed`, `Blocked steps`) and
+    *inferred* — shown dim with a `~` — when a plan step's files were edited this session; a
+    skill's own status replaces the guess. Edits made through `Bash`, or outside the session, are
+    not seen.
+- `/workflow-panel` in `/workflow-help` and the README. No existing skill's behaviour changed.
+
+### Fixed
+
+- `/workflow-status` named `/release` in its step table, a command that does not exist; it now
+  reads `/workflow-release`.
+
 ## [1.8.0] - 2026-08-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
