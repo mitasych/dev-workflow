@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "dev-workflow",
-  "version": "1.10.2",
+  "version": "1.10.3",
   "description": "Structured, multi-step development workflow: clarify → plan → implement → test → review → document → release, with an optional TDD (red → green → refactor) path. Each step is a /workflow-* skill you invoke explicitly, except branch creation which can also be offered automatically; steps share state via .workflow/current-issue.md in the working project.",
   "author": {
     "name": "Aleksandr Mitasov",

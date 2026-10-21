@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.3] - 2026-10-21 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Fixed
+
+- The regular path now runs in one order everywhere: implement → test → review → document. The
+  skills used to hand off review before test, against the help, the README and the status panel, so
+  `/workflow-implement` and the panel named different next steps and a passing review sent you back
+  to `/workflow-test`. `/workflow-test` is now Step 4 and hands off to `/workflow-review`
+  (Step 5/6), whose ✅ goes to `/workflow-document`; `/workflow-status` lists Test Status before
+  Code Review.
+- `/workflow-refactor` pointed at `/implement-green`, which does not exist; it now names
+  `/workflow-implement-green`.
+
+### Changed
+
+- `/workflow-implement` offers `/workflow-test` and `/workflow-review` side by side, saying what
+  each runs, since testing is optional. After a ❌ review, `/workflow-review` says to re-run
+  `/workflow-test` if it was used, then `/workflow-review`.
+- `/workflow-review` keeps a criterion marked `[x]` from a `## Test Status` written after the latest
+  review, unless the code shows a defect the tests missed; an older one is reassessed.
+
 ## [1.10.2] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
