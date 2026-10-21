@@ -92,5 +92,7 @@ Create a `.gitignore` file within the `.workflow` directory containing a single 
 
 After implementation:
 
-- If all steps completed cleanly → Suggest running `/workflow-review`
+- If all steps completed cleanly → Offer both next steps and let the developer choose:
+  - `/workflow-test` — write tests, run the full suite, and run the project's linters and type checks
+  - `/workflow-review` — go straight to review; none of the above runs
 - If steps are blocked or issues encountered → Summarize what needs attention before continuing

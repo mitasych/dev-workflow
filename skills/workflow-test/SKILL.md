@@ -1,6 +1,6 @@
 ---
 name: workflow-test
-description: "Workflow Step 5 (Regular): Write or update tests, run the test suite"
+description: "Workflow Step 4 (Regular): Write or update tests, run the test suite"
 argument-hint: "[--source <obsidian note | file | URL>]"
 model: sonnet
 disable-model-invocation: true
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # Test
 
-You are performing Step 5 of the **regular** development workflow: **Test**.
+You are performing Step 4 of the **regular** development workflow: **Test**.
 
 ## Input
 
@@ -171,5 +171,5 @@ Create a `.gitignore` file within the `.workflow` directory containing a single 
 
 ### 8. Next step
 
-- If all tests pass → Suggest running `/workflow-document`
+- If all tests pass → Suggest running `/workflow-review`
 - If tests fail due to code bugs → Suggest fixing implementation first, then re-running `/workflow-test`

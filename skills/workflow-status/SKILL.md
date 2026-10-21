@@ -26,9 +26,9 @@ Scan the scratchpad for these status sections and determine what's done:
 | `## Test Red Status`        | `/workflow-test-red` (TDD)        |
 | `## Implement Green Status` | `/workflow-implement-green` (TDD) |
 | `## Implementation Status`  | `/workflow-implement` (Regular)   |
+| `## Test Status`            | `/workflow-test` (Regular)        |
 | `## Refactor Status`        | `/workflow-refactor` (TDD)        |
 | `## Code Review`            | `/workflow-review`                |
-| `## Test Status`            | `/workflow-test` (Regular)        |
 | `## Documentation Status`   | `/workflow-document`              |
 | `## Release`                | `/workflow-release`               |
 

@@ -21,7 +21,7 @@ $ARGUMENTS
 ### 1. Load context
 
 - Read `.workflow/current-issue.md` — it must contain an **Implement Green Status** confirming all tests pass.
-- If tests are not all green, stop and suggest running `/implement-green` first.
+- If tests are not all green, stop and suggest running `/workflow-implement-green` first.
 - Run the full test suite to confirm the starting state is green.
 
 **Additional sources (if `--source` is provided):**
@@ -32,7 +32,7 @@ $ARGUMENTS
 
 ### 2. Analyze what needs refactoring
 
-Review the changes made during `/implement-green` and identify:
+Review the changes made during `/workflow-implement-green` and identify:
 
 - **Duplication** — Repeated code that should be extracted
 - **Naming** — Variables, methods, classes with unclear or misleading names

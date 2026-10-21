@@ -1,6 +1,6 @@
 ---
 name: workflow-review
-description: "Workflow Step 4/6: Code review against project standards and best practices"
+description: "Workflow Step 5/6: Code review against project standards and best practices"
 argument-hint: "[--source <obsidian note | file | URL>]"
 model: opus
 disable-model-invocation: true
@@ -20,7 +20,7 @@ $ARGUMENTS
 
 ### 1. Load context
 
-- Read `.workflow/current-issue.md` for the issue description, plan, and implementation status.
+- Read `.workflow/current-issue.md` for the issue description, plan, implementation status, and test status (when `/workflow-test` ran).
 - Run `git diff main...HEAD` (or `git diff --staged` if not on a branch) to get the actual changes under review.
 - If no changes are detected, run `git diff` for unstaged changes.
 
@@ -52,7 +52,7 @@ code shows. Change only the character inside the brackets, never the criterion's
 | `[?]` | unverified | no evidence either way; needs a manual look |
 | `[ ]` | open | not assessed |
 
-This run replaces any earlier marker, hand-set ones included.
+This run replaces any earlier marker, hand-set ones included — except a `[x]` backed by a `## Test Status` written after the latest `## Code Review`: keep it unless the code shows a defect the tests missed, and report that defect as a finding. A `[x]` from tests that ran before an earlier review's fixes is stale; reassess it like any other.
 
 #### b) Security
 
@@ -168,6 +168,6 @@ Create a `.gitignore` file within the `.workflow` directory containing a single 
 
 Based on the verdict:
 
-- **✅ Approve** → Suggest `/workflow-test` (regular) or `/workflow-document` (if tests already done in TDD)
+- **✅ Approve** → Suggest `/workflow-document`
 - **⚠️ Approve with comments** → List what should ideally be fixed, suggest proceeding with caution
-- **❌ Request changes** → List the critical items that must be fixed before continuing. Do NOT suggest moving forward.
+- **❌ Request changes** → List the critical items that must be fixed before continuing. Do NOT suggest moving forward. Once they are fixed, re-run `/workflow-test` if this issue used it, then `/workflow-review`.
