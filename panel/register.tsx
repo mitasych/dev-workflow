@@ -7,28 +7,40 @@ import {
   addSwitch,
   askPrompt,
   costLine,
+  creditOther,
+  creditResponse,
   decide,
   family,
+  guessSwitch,
   isMeasurable,
   isStillOurs,
   measureSwitch,
   measuredLine,
+  modelLines,
+  newLedger,
   readSetting,
+  readSpendReport,
+  skipSwitch,
+  spendLine,
+  stepLine,
   switchToast,
   totalLine,
 } from './model'
-import type { CacheUsage, SwitchEvent } from './model'
+import type { CacheUsage, SpendReport, SwitchEvent, Usage } from './model'
 import { WORKFLOW_STEPS, parseScratchpad } from './parse'
 import { CRITERION_ORDER, deriveView } from './view'
 import type { Icon, StepRow } from './view'
 
 type Api = Parameters<Hook<'session.start'>>[0]
+type Options = Parameters<Register>[1]
 
 const PANE = 'workflow'
 const SCRATCHPAD = '.workflow/current-issue.md'
 const POLL_MS = 3000
 // A switch's toast carries what the cache loss cost, so it stays long enough to read.
 const SWITCH_TOAST_MS = 15000
+// How long one ledger credit may hold up the responses queued behind it.
+const SETTLE_MS = 5000
 const MAX_EDITS = 500
 const DOCK_COLUMNS = 56
 // Where the terminal docks a pane beside the transcript instead of above the prompt.
@@ -39,8 +51,14 @@ const issue = atom({ plugin: 'dev-workflow', key: 'issue' } as const, null)
 const edits = atom({ plugin: 'dev-workflow', key: 'edits' } as const, [])
 const active = atom({ plugin: 'dev-workflow', key: 'active' } as const, null)
 const autoOpened = atom({ plugin: 'dev-workflow', key: 'autoOpened' } as const, false)
-const switches = atom({ plugin: 'dev-workflow', key: 'switches' } as const, NO_SWITCHES)
+// A total 1.11.0 stored (with `isGuess`) reads as none after a reload, rather than as a broken count.
+const switches = atom({ plugin: 'dev-workflow', key: 'switches' } as const, NO_SWITCHES, { shape: 'switches-2' })
 const started = atom({ plugin: 'dev-workflow', key: 'started' } as const, false)
+const spend = atom({ plugin: 'dev-workflow', key: 'spend' } as const, null)
+// The last switch that threw a warm cache away: its first request after says what was re-written.
+const pendingSwitch = atom({ plugin: 'dev-workflow', key: 'pendingSwitch' } as const, null)
+
+type Pending = { e: SwitchEvent; lead: string | null }
 
 const STEP_IDS = new Set<string>(WORKFLOW_STEPS.map(d => d.id))
 
@@ -104,8 +122,9 @@ let root: string | null = null
 let seenMtime = -1
 // What the mod's own switch announces; the cost toast of that switch carries it, so there is one toast.
 let lead: string | null = null
-// The last switch that threw a warm cache away: its first request after says what was re-written.
-let measuring: { e: SwitchEvent; lead: string | null } | null = null
+// The ledger's credits, one at a time: each reads the cost and credits it in turn, so
+// parallel responses cannot interleave and a lower cost only means a counter that restarted.
+let settling: Promise<void> = Promise.resolve()
 
 // The nearest ancestor of the session's cwd holding a scratchpad, not
 // climbing past the repository root.
@@ -149,17 +168,90 @@ const refresh = async ($: Api, isForced = false): Promise<void> => {
   await update($, snapshot, () => next)
 }
 
+type SpendBlock = { lines: string[]; steps: string | null }
+
+// The pane's spend lines for the level the setting names; null while off or not yet seeded.
+const spendBlock = async ($: Api, options: Options): Promise<SpendBlock | null> => {
+  const report = readSpendReport(options.spendReport)
+  const ledger = await read($, spend)
+  if (report === 'off' || ledger === null) return null
+  const total = options.showSwitchCost !== false ? await read($, switches) : null
+
+  return {
+    lines: [spendLine(ledger, total), ...(report === 'total' ? [] : modelLines(ledger))],
+    steps: report === 'step' ? stepLine(ledger) : null,
+  }
+}
+
+// The steps line may wrap, so it is counted as two rows.
+const blockRows = (block: SpendBlock | null): number =>
+  block === null ? 0 : block.lines.length + (block.steps === null ? 0 : 2)
+
+type Hit = { model: string; usage: Usage; isSubagent: boolean }
+
+// The option went off: the ledger kept while it was on goes.
+const dropLedger = async ($: Api): Promise<void> => {
+  if ((await read($, spend)) !== null) await update($, spend, () => null)
+}
+
+// What the session's cost rose by since the last credit goes to the ledger: to the
+// response's model when `hit` is its stop chunk, else to `other` (a compaction,
+// background calls). The first call after the setting turns on only seeds the baseline.
+// A call the queue gave up on (`isLive` false) credits nothing: its cost read is stale.
+const settleNow = async ($: Api, hit: Hit | undefined, isLive: () => boolean): Promise<void> => {
+  const cost = (await $.session.usage()).cost?.usd ?? null
+  const step = (await read($, active)) ?? 'none'
+  await update($, spend, ledger => {
+    if (!isLive()) return ledger
+    if (ledger === null) return newLedger(cost ?? 0)
+
+    return hit ? creditResponse(ledger, { ...hit, cost, step }) : creditOther(ledger, cost, step)
+  })
+}
+
+// A failed credit leaves the queue running for the next one, and so does a hung one
+// after SETTLE_MS: the responses waiting behind it go on, the late credit is dropped.
+// Off (the default) has nothing to order, so it skips the queue and its timer.
+const settle = ($: Api, report: SpendReport, hit?: Hit): Promise<void> => {
+  if (report === 'off') return dropLedger($)
+  settling = settling
+    .then(
+      () =>
+        new Promise<void>(resolve => {
+          let isLate = false
+          const timer = $.clock.after(SETTLE_MS, () => {
+            isLate = true
+            resolve()
+          })
+          void settleNow($, hit, () => !isLate)
+            .catch(() => undefined)
+            .finally(() => {
+              timer.cancel()
+              resolve()
+            })
+        }),
+    )
+    .catch(() => undefined)
+
+  return settling
+}
+
 // Asks for rows enough to list the plan inline, and a sidebar's width when docked.
-const openPane = async ($: Api, isCostShown: boolean) => {
+const openPane = async ($: Api, options: Options) => {
   const snap = await read($, snapshot)
   const open = snap?.findings.filter(f => f.state === 'open').length ?? 0
   // A snapshot kept from before the five markers is not a list yet.
   const list = snap?.criteria
   const urgent = Array.isArray(list) ? list.filter(c => isUrgent(c.state)).length : 0
-  const hasTotal = isCostShown && totalLine(await read($, switches)) !== null
+  const hasTotal = options.showSwitchCost !== false && totalLine(await read($, switches)) !== null
   const rows = Math.min(
     40,
-    9 + (hasTotal ? 1 : 0) + (snap?.plan.length ?? 0) + (open > 0 ? open + 2 : 0) + (urgent > 0 ? urgent + 2 : 0),
+    9 +
+      (hasTotal ? 1 : 0) +
+      blockRows(await spendBlock($, options)) +
+      (snap?.plan.length ?? 0) +
+      (open > 0 ? open + 2 : 0) +
+      (urgent > 0 ? urgent + 2 : 0),
   )
 
   return $.ui.open({ id: PANE, title: 'Workflow', rows, columns: DOCK_COLUMNS })
@@ -207,8 +299,12 @@ const switchModel = async ($: Api, skill: string, model: string): Promise<void> 
 }
 
 // The first main-loop request after a switch replaces the estimate with what it wrote.
-const reportMeasured = async ($: Api, job: NonNullable<typeof measuring>, usage: CacheUsage): Promise<void> => {
-  if (!isMeasurable(job.e, usage)) return
+// One on another model (a fallback) can't say, so the estimate stays, marked as a guess.
+const reportMeasured = async ($: Api, job: Pending, usage: CacheUsage): Promise<void> => {
+  if (!isMeasurable(job.e, usage)) {
+    await update($, switches, total => guessSwitch(total, job.e))
+    return
+  }
   $.ui.toast(measuredLine(job.e, usage, job.lead ?? undefined), { timeoutMs: SWITCH_TOAST_MS })
   await update($, switches, total => measureSwitch(total, job.e, usage))
 }
@@ -245,6 +341,7 @@ export const register: Register = (on, options) => {
       }),
     )
     await guarded(() => refresh($, true))
+    await guarded(() => settle($, readSpendReport(options.spendReport)))
     $.clock.every(POLL_MS, () => void guarded(() => refresh($)))
     // A reload runs session.start again in the same session, whose own switch
     // must not be undone; $.state outlives the reload, not the process.
@@ -265,7 +362,7 @@ export const register: Register = (on, options) => {
       await refresh($, true)
       if (options.autoOpen === true && (await read($, snapshot)) && !(await read($, autoOpened))) {
         await update($, autoOpened, () => true)
-        await openPane($, options.showSwitchCost !== false)
+        await openPane($, options)
       }
     })
 
@@ -333,27 +430,58 @@ export const register: Register = (on, options) => {
       await guarded(async () => {
         const used = lead
         const line = costLine(e, used ?? undefined)
-        measuring = null
+        const overtaken = await read($, pendingSwitch)
+        if (overtaken !== null) {
+          await update($, pendingSwitch, () => null)
+          await update($, switches, total => skipSwitch(total, overtaken.e))
+        }
         if (line === null) return
         lead = null
         $.ui.toast(line, { timeoutMs: SWITCH_TOAST_MS })
         await update($, switches, total => addSwitch(total, e))
-        if (e.prompt_cache_warm) measuring = { e, lead: used }
+        if (e.prompt_cache_warm) {
+          const { from_model, to_model, context_tokens, prompt_cache_warm, estimated_cache_write_usd, pricing } = e
+          const job = { from_model, to_model, context_tokens, prompt_cache_warm, estimated_cache_write_usd, pricing }
+          await update($, pendingSwitch, () => ({ e: job, lead: used }))
+        }
       })
     }
 
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // Reads each response's cache usage on its way past; the response is passed on untouched.
+  // Spend since the last response (between turns) is credited to `other` before the turn's responses.
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) await guarded(() => settle($, readSpendReport(options.spendReport)))
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A compaction spends without a response of its own.
+  on('classic.PostCompact', async ($, e, next) => {
+    await guarded(() => settle($, readSpendReport(options.spendReport)))
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Reads each response's usage on its way past; the response is passed on untouched.
   on('turn.step', async function* ($, e, next) {
     const stream = next(e)
     for await (const chunk of stream) {
-      if (chunk.kind === 'stop' && chunk.usage !== null && e.agentId === undefined && measuring !== null) {
-        const job = measuring
+      if (chunk.kind === 'stop' && chunk.usage !== null) {
+        const { usage } = chunk
+        const isSubagent = e.agentId !== undefined
+        await guarded(() => settle($, readSpendReport(options.spendReport), { model: usage.model, usage, isSubagent }))
+      }
+      if (chunk.kind === 'stop' && chunk.usage !== null && e.agentId === undefined) {
         const usage = chunk.usage
-        measuring = null
-        await guarded(() => reportMeasured($, job, usage))
+        await guarded(async () => {
+          const job = await read($, pendingSwitch)
+          if (job === null) return
+          await update($, pendingSwitch, () => null)
+          // Turned off since the switch: the measurement is dropped, not shown.
+          if (options.showSwitchCost !== false) await reportMeasured($, job, usage)
+        })
       }
       yield chunk
     }
@@ -370,7 +498,7 @@ export const register: Register = (on, options) => {
       return { text: 'Workflow panel closed.' }
     }
     await guarded(() => refresh($, true))
-    const opened = await openPane($, options.showSwitchCost !== false)
+    const opened = await openPane($, options)
     if (!opened.isPlaced) {
       return { text: `Workflow panel opened but not drawn: ${opened.reason}` }
     }
@@ -421,16 +549,28 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e)
     const snap = await read($, snapshot)
     const spent = options.showSwitchCost !== false ? totalLine(await read($, switches)) : null
+    const block = await spendBlock($, options)
+    const spendRows = block !== null && (
+      <Box flexDirection="column">
+        {block.lines.map(line => (
+          <Text key={line} color={TONE.meta} wrap="truncate">
+            {line}
+          </Text>
+        ))}
+        {block.steps !== null && <Text color={TONE.meta}>{block.steps}</Text>}
+      </Box>
+    )
 
     if (!snap) {
       const empty = <Text color={TONE.empty}>No active workflow — start with /workflow-clarify</Text>
 
-      return spent === null ? (
+      return spent === null && block === null ? (
         empty
       ) : (
         <Box flexDirection="column">
           {empty}
-          <Text color={TONE.meta}>{spent}</Text>
+          {spent !== null && <Text color={TONE.meta}>{spent}</Text>}
+          {spendRows}
         </Box>
       )
     }
@@ -451,7 +591,7 @@ export const register: Register = (on, options) => {
     const lists =
       (view.findings.length > 0 ? listed.length + 2 + (settled > 0 ? 1 : 0) : 0) +
       (pending.length > 0 ? pending.length + 2 : 0)
-    const fixed = 8 + (spent === null ? 0 : 1)
+    const fixed = 8 + (spent === null ? 0 : 1) + blockRows(block)
     const hasBrief = fixed + view.plan.length * 2 + lists <= e.props.scroll.bodyRows
     const subtitle = [view.mode === 'tdd' ? 'TDD' : view.mode === 'regular' ? 'Regular' : null, view.branch]
       .filter(Boolean)
@@ -473,6 +613,7 @@ export const register: Register = (on, options) => {
             {spent}
           </Text>
         )}
+        {spendRows}
         {criteria.total > 0 && (
           <Box gap={1} flexWrap="wrap">
             <Text color={met === criteria.total ? 'success' : 'warning'}>

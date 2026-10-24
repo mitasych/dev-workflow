@@ -168,7 +168,7 @@ lists, so the panel then refreshes from file edits and a 3-second poll instead o
 Every skill names a `model:` in its frontmatter, but Claude Code applies it to the invoking turn only:
 your next prompt is back on the session model. That matters for the skills you go back and forth with —
 `workflow-clarify`, `workflow-plan`, `workflow-learn` and `learn-code`, marked `multi-turn: true`. The
-same mod in `panel/` can keep the session on the skill's model, set by two plugin options in `/config`:
+same mod in `panel/` can keep the session on the skill's model, set by plugin options in `/config`:
 
 - **`modelSwitch`** (default `off`) — what happens when a `/workflow-*` skill or `/learn-code` names a
   model other than the session's:
@@ -198,7 +198,28 @@ same mod in `panel/` can keep the session on the skill's model, set by two plugi
   often far below the estimate. A cold cache loses nothing and says so. Both toasts stay 15 seconds, and
   a switch the mod makes shares its toast with the skill (`Model → opus for /workflow-plan · …`). The
   panel keeps a session total, corrected as measurements arrive: `Switches: 3 · 540k tokens ≈ $2.40`. A
+  switch you change again before sending anything costs nothing (the model in between cached nothing),
+  so its estimate comes off the total. When the first request after a switch runs on another model (a
+  fallback), it can't measure the switch: the estimate stays, and the total reads `(rough guess)`. A
   skill's one-turn model is a switch too, but Claude Code reports none for it, so it isn't counted.
+- **`spendReport`** (default `off`) — keeps a ledger of what the session spends and shows it in the
+  panel, from `off` through `total` and `model` to `step`:
+
+  | Value | Panel shows |
+  |---|---|
+  | `total` | `Spend $5.51 · switches $0.94 (17%)` |
+  | `model` | plus a line per model: `opus   $4.10 · 38k new · 1.2M cached · 4k out` |
+  | `step` | plus the spend per `/workflow-*` step: `plan $2.10 · implement $1.80 · none $0.20` |
+
+  Dollars are what Claude Code's own `/cost` total rose by, credited to each response's model and to the
+  last workflow step you started: clarify, plan, implement, review and so on. Utility skills like
+  `/workflow-status` or `/workflow-commit` don't start one, and spend before the first step reads `none`.
+  No price table is kept, so a model Claude Code has no price for reads `unpriced`. `new` is fresh
+  input plus cache writes, `cached` is cache reads. A subagent's tokens get their own `subagents`
+  line, while its dollars stay with its model; a compaction and calls made between turns are the
+  `other` line. The switch share needs `showSwitchCost` on and is left out otherwise. The ledger counts from the moment the option is on (a resumed session
+  starts from what it had already cost), and turning it off drops it. Two subagents answering at the
+  same moment can swap a few cents between their models; the total stays exact.
 
 A switch gives the new model the whole conversation to cache again, unless its cache from earlier in
 the hour is still warm, so `always` can cost the most. The `options` picker needs Claude Code 2.1.271

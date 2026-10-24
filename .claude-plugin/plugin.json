@@ -1,7 +1,7 @@
 {
   "name": "dev-workflow",
   "displayName": "Development Workflow",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Structured, multi-step development workflow: clarify → plan → implement → test → review → document → release, with an optional TDD (red → green → refactor) path. Each step is a /workflow-* skill you invoke explicitly, except branch creation which can also be offered automatically; steps share state via .workflow/current-issue.md in the working project.",
   "author": {
     "name": "Aleksandr Mitasov",
@@ -31,6 +31,13 @@
       "title": "Show model switch cost",
       "description": "On every model switch, show what it costs in prompt cache: first an upper-bound estimate, then the tokens and cost measured from the next response. The workflow panel keeps a session total",
       "default": true
+    },
+    "spendReport": {
+      "type": "string",
+      "title": "Show model spend",
+      "description": "Keep a ledger of what the session spends and show it in the workflow panel: total (spend and what model switches cost of it), model (plus tokens and dollars per model), step (plus the same per workflow step)",
+      "options": ["off", "total", "model", "step"],
+      "default": "off"
     }
   }
 }

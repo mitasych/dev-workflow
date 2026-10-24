@@ -37,7 +37,28 @@ const world = (on: On, files: Record<string, string>) => {
     answer: null as string | null,
     // What the model request under the plugin reports having read and written.
     usage: { model: 'claude-opus-5-5', input_tokens: 2, output_tokens: 9, cache_read_input_tokens: 600, cache_creation_input_tokens: 100000 },
+    // The session's running cost, as /cost totals it; a resumed session starts above 0. null: the host keeps none.
+    cost: 52.04 as number | null,
+    // Holds the next usage read's answer back, as a slow engine call would; `onUsage` hears the read.
+    usageGate: null as Promise<void> | null,
+    onUsage: null as (() => void) | null,
   }
+  on('session.usage', async () => {
+    const cost = w.cost
+    w.onUsage?.()
+    const gate = w.usageGate
+    w.usageGate = null
+    if (gate !== null) await gate
+
+    return {
+      value: {
+        startedAt: 0,
+        context: { window: 200000 },
+        rateLimits: [],
+        ...(cost === null ? {} : { cost: { usd: cost } }),
+      },
+    }
+  })
   on('session.model', () => ({ value: w.model }))
   on('config.list', () => ({
     value: [{ key: 'model', label: 'Model', kind: 'choice' as const, value: w.saved, provider: { plugin: 'engine', tier: 'core' as const }, isLocked: false }],
@@ -78,6 +99,8 @@ const world = (on: On, files: Record<string, string>) => {
     return { value: undefined }
   })
   on('classic.PostModelSwitch', () => ({}))
+  on('classic.PostCompact', () => ({}))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.step', async function* (_$, e) {
     yield { kind: 'stop' as const, stopReason: 'end_turn' as const, usage: w.usage }
 
@@ -715,7 +738,7 @@ const paneText = async ($: Engine, pattern: RegExp) => {
   return text
 }
 
-test('a model switch toasts the cache it threw away, and the pane keeps the total', async ($, on) => {
+test('a model switch toasts the cache it threw away, and one overtaken before any request costs nothing', async ($, on) => {
   const w = world(on, { [SCRATCH]: mid })
   mock.clock(on)
   await $.session.start(START)
@@ -730,7 +753,8 @@ test('a model switch toasts the cache it threw away, and the pane keeps the tota
     'sonnet → opus · cache already cold, nothing lost',
   ])
   expect(w.toastMs).toEqual([15000, 15000])
-  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 182k tokens ≈ $1.14')
+  // Opus never answered, so it cached nothing; the second found the cache already cold.
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · ≈ $0.00')
 })
 
 test('the switch total shows on the empty pane too', async ($, on) => {
@@ -764,6 +788,41 @@ test('showSwitchCost off: no toast and no total', { options: { showSwitchCost: f
   await $.classic.PostModelSwitch(SWITCHED)
 
   expect(w.toasts).toEqual([])
+  expect(await paneText($, /^Switches:/)).toBeUndefined()
+})
+
+test('a switch still waiting when showSwitchCost goes off is dropped, not measured', { options: { showSwitchCost: false } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  const { from_model, to_model, context_tokens, prompt_cache_warm, estimated_cache_write_usd, pricing } = SWITCHED
+  // Stored by the switch while the option was still on.
+  let stored: unknown = { e: { from_model, to_model, context_tokens, prompt_cache_warm, estimated_cache_write_usd, pricing }, lead: null }
+  let version = 1
+  on('state.get', (_$, e, next) => (e.key === 'pendingSwitch' ? { value: { value: stored, version } } : next(e)))
+  // Answered here, so the next read sees the write's version and the update lands.
+  on('state.set', (_$, e, next) => {
+    if (e.key !== 'pendingSwitch') return next(e)
+    stored = e.value
+    version += 1
+
+    return { value: { isSet: true, version } }
+  })
+  await $.session.start(START)
+
+  w.usage = { ...w.usage, model: to_model }
+  await step($)
+
+  expect(w.toasts).toEqual([])
+  expect(stored).toBeNull()
+})
+
+test('a switch total stored by 1.11.0 reads as none after a reload', async ($, on) => {
+  world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  const old = { count: 2, tokens: 182340, usd: 1.14, isGuess: true }
+  on('state.get', (_$, e, next) => (e.key === 'switches' ? { value: { value: old, version: 1 } } : next(e)))
+  await $.session.start(START)
+
   expect(await paneText($, /^Switches:/)).toBeUndefined()
 })
 
@@ -912,7 +971,8 @@ test('a subagent\'s request, another model\'s, or a cold-cache switch is never m
   await step($)
 
   expect(w.toasts.filter(t => t.includes('(measured)'))).toEqual([])
-  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 182k tokens ≈ $1.14')
+  // The haiku request used up the measurement without being able to make it: the estimate stays, marked.
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 182k tokens ≈ $1.14 (rough guess)')
 })
 
 test('upgrade never switches down', { options: { modelSwitch: 'upgrade' } }, async ($, on) => {
@@ -1033,7 +1093,21 @@ test('every kind of switch is reported, the person\'s picker and an automatic fa
   await $.classic.PostModelSwitch({ ...SWITCHED, source: 'auto', requested_model: null })
 
   expect(w.toasts.length).toBe(2)
-  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 365k tokens ≈ $2.28')
+  // The first was overtaken before any request: only the second's estimate stands.
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 182k tokens ≈ $1.14')
+})
+
+test('a switch overtaken by another drops its estimate, and the next request measures the second', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.classic.PostModelSwitch(SWITCHED)
+  await $.classic.PostModelSwitch({ ...SWITCHED, from_model: 'claude-opus-5-5', to_model: 'claude-haiku-5-5', estimated_cache_write_usd: 0.1823 })
+  w.usage = { ...w.usage, model: 'claude-haiku-5-5', cache_read_input_tokens: 0, cache_creation_input_tokens: 182340 }
+  await step($)
+
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 182k tokens ≈ $0.18')
 })
 
 test('after several switches the default to restore is still the one from before the first', { options: { modelSwitch: 'always' } }, async ($, on) => {
@@ -1108,4 +1182,324 @@ test('after a switch the pane asks for a row for its total', async ($, on) => {
   await $.command.run({ ...PANEL, presentation: { isFullscreen: false, columns: 96 } })
 
   expect(w.lastOpen).toEqual({ rows: 13, columns: 56 })
+})
+
+type World = ReturnType<typeof world>
+
+// A response whose cost rose by `rise` since the last one.
+const priced = async ($: Engine, w: World, rise: number, extra: { agentId?: string } = {}) => {
+  w.cost = (w.cost ?? 0) + rise
+  await step($, extra)
+}
+
+const HAIKU = { model: 'claude-haiku-5-5', input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 41883 }
+
+test('spendReport is off by default: nothing is kept or shown', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await priced($, w, 0.1)
+
+  expect(await paneText($, /^Spend/)).toBeUndefined()
+  expect(await paneText($, /^opus/)).toBeUndefined()
+})
+
+test('total: what the cost rose by since the session started', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await priced($, w, 0.1)
+  await priced($, w, 0.25)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.35')
+  expect(await paneText($, /^opus/)).toBeUndefined()
+})
+
+test('total: the share the switches caused', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await $.classic.PostModelSwitch(SWITCHED)
+  await priced($, w, 5.7)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $5.70 · switches $0.62 (11%)')
+})
+
+test('total: no share with showSwitchCost off', { options: { spendReport: 'total', showSwitchCost: false } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await $.classic.PostModelSwitch(SWITCHED)
+  await priced($, w, 5.7)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $5.70')
+})
+
+test('model: dollars and tokens per model, dearest first', { options: { spendReport: 'model' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await priced($, w, 0.5)
+  w.usage = HAIKU
+  await priced($, w, 0.1)
+
+  expect(await paneText($, /^opus/)).toBe('opus   $0.50 · 100k new · 600 cached · 9 out')
+  expect(await paneText($, /^haiku/)).toBe('haiku  $0.10 · 42k new · 0 cached · 4 out')
+})
+
+test('model: a subagent has its own token line, and its dollars stay with its model', { options: { spendReport: 'model' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  w.usage = HAIKU
+  await priced($, w, 0.05, { agentId: 'a1' })
+
+  expect(await paneText($, /^subagents/)).toBe('subagents  42k new · 0 cached · 4 out')
+  expect(await paneText($, /^haiku/)).toBe('haiku      $0.05')
+})
+
+test('a compaction and spend between turns go to other, not to the next response', { options: { spendReport: 'model' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  w.cost = (w.cost ?? 0) + 0.12
+  await $.classic.PostCompact({ trigger: 'manual' } as never)
+  w.cost += 0.03
+  await $.turn.start({ text: 'go', turnId: 't2' })
+  await priced($, w, 0.2)
+
+  expect(await paneText($, /^other/)).toBe('other  $0.15')
+  expect(await paneText($, /^opus/)).toBe('opus   $0.20 · 100k new · 600 cached · 9 out')
+})
+
+test('a subagent starting a turn does not flush the main loop\'s spend', { options: { spendReport: 'model' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  w.cost = (w.cost ?? 0) + 0.3
+  await $.turn.start({ text: 'go', turnId: 't3', agentId: 'a1' })
+  await priced($, w, 0)
+
+  expect(await paneText($, /^other/)).toBeUndefined()
+})
+
+test('step: dollars per workflow step, none before the first', { options: { spendReport: 'step' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await priced($, w, 0.2)
+  await $.skill.prompt({ skill: 'dev-workflow:workflow-plan', text: 'go' })
+  await priced($, w, 0.6)
+
+  expect(await paneText($, /^plan /)).toBe('plan $0.60 · none $0.20')
+})
+
+test('a cost that restarted below the baseline credits nothing', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await priced($, w, 0.4)
+
+  w.cost = 0.05
+  await step($)
+  await priced($, w, 0.1)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.50')
+})
+
+test('a host with no cost ledger marks the model unpriced', { options: { spendReport: 'model' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.cost = null
+  await $.session.start(START)
+
+  await step($)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.00 + unpriced')
+  expect(await paneText($, /^opus/)).toBe('opus  unpriced · 100k new · 600 cached · 9 out')
+})
+
+test('a reload keeps the ledger and does not re-seed it', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await priced($, w, 0.3)
+
+  await $.session.start(START)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.30')
+})
+
+test('the empty-state pane shows the block too', { options: { spendReport: 'model' } }, async ($, on) => {
+  const w = world(on, {})
+  mock.clock(on)
+  await $.session.start(START)
+  await priced($, w, 0.5)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.50')
+  expect(await paneText($, /^opus/)).toBe('opus  $0.50 · 100k new · 600 cached · 9 out')
+})
+
+const quietLedger = async ($: Engine, on: On, w: World) => {
+  let writes = 0
+  on('state.set', async (_$, e, next) => {
+    writes += 1
+
+    return next(e)
+  })
+  await $.session.start(START)
+  const before = writes
+
+  w.cost = (w.cost ?? 0) + 0.2
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await step($)
+  await $.classic.PostCompact({ trigger: 'manual' } as never)
+
+  return writes - before
+}
+
+test('spendReport off: a turn, a response and a compaction write no state and show nothing', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+
+  expect(await quietLedger($, on, w)).toBe(0)
+  expect(await paneText($, /^Spend/)).toBeUndefined()
+})
+
+test('an unlisted spendReport reads as off', { options: { spendReport: 'everything' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+
+  expect(await quietLedger($, on, w)).toBe(0)
+  expect(await paneText($, /^Spend/)).toBeUndefined()
+})
+
+test('model shows no step line, step does', { options: { spendReport: 'model' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await $.skill.prompt({ skill: 'dev-workflow:workflow-plan', text: 'go' })
+  await priced($, w, 0.2)
+
+  expect(await paneText($, /^opus/)).toBeDefined()
+  expect(await paneText($, /^plan /)).toBeUndefined()
+})
+
+const ticks = async (n: number) => {
+  for (let i = 0; i < n; i += 1) await Promise.resolve()
+}
+
+test('parallel responses are credited one at a time, so none is counted twice', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  let release = () => {}
+  w.usageGate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  let reads = 0
+  let heard = () => {}
+  const read = new Promise<void>(resolve => {
+    heard = resolve
+  })
+  w.onUsage = () => {
+    reads += 1
+    heard()
+  }
+
+  // The subagent's read sees $52.14 and stalls; the main loop's response lands meanwhile.
+  w.cost = 52.14
+  const sub = step($, { agentId: 'a1' })
+  await read
+  w.cost = 52.24
+  const main = step($)
+  // Unqueued, the main loop's response would read and finish here; queued, it waits.
+  await Promise.race([main, ticks(5000)])
+  expect(reads).toBe(1)
+  release()
+  await Promise.all([sub, main])
+  await priced($, w, 0.1)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.30')
+})
+
+test('a credit that hangs is dropped after 5 seconds, and the responses behind it go on', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  const clock = mock.clock(on)
+  await $.session.start(START)
+  w.usageGate = new Promise<void>(() => {})
+  const read = new Promise<void>(resolve => {
+    w.onUsage = resolve
+  })
+
+  w.cost = 52.14
+  const hung = step($)
+  await read
+  w.onUsage = null
+  await clock.advance(5000)
+  await hung
+  await priced($, w, 0.1)
+
+  // The hung read's $0.10 lands with the next credit instead of being lost.
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.20')
+})
+
+test('spendReport off sets no timer on a response', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  // A clock whose timers never fire, counting the ones set.
+  let timers = 0
+  on('clock.every', () => new Promise<void>(() => {}))
+  on('clock.after', () => {
+    timers += 1
+
+    return new Promise<void>(() => {})
+  })
+  await $.session.start(START)
+
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await priced($, w, 0.1)
+
+  expect(timers).toBe(0)
+})
+
+test('turning spendReport off drops the ledger at the next event, without a reload', async ($, on) => {
+  world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  // The ledger kept while the option was on, before this event.
+  let stored: unknown = { seen: 52, usd: 0.5, other: 0, models: {}, steps: {}, subagents: { fresh: 0, cached: 0, written: 0, output: 0 } }
+  let version = 1
+  let writes = 0
+  on('state.get', (_$, e, next) => (e.key === 'spend' ? { value: { value: stored, version } } : next(e)))
+  // Answered here, so the next read sees the write's version and the update lands.
+  on('state.set', (_$, e, next) => {
+    if (e.key !== 'spend') return next(e)
+    stored = e.value
+    version += 1
+    writes += 1
+
+    return { value: { isSet: true, version } }
+  })
+
+  await $.turn.start({ text: 'go', turnId: 't1' })
+
+  expect(stored).toBeNull()
+  expect(writes).toBe(1)
+})
+
+test('the pane asks for rows for the spend lines, two for the steps line', { options: { spendReport: 'step' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await priced($, w, 0.5)
+
+  await $.command.run({ ...PANEL, presentation: { isFullscreen: false, columns: 96 } })
+
+  expect(w.lastOpen).toEqual({ rows: 16, columns: 56 })
 })

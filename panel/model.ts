@@ -1,3 +1,5 @@
+import type { Bucket, Ledger, ModelSpend } from './types'
+
 export type ModelSwitch = 'off' | 'suggest' | 'upgrade' | 'multi-turn' | 'always'
 
 export type Family = 'haiku' | 'sonnet' | 'opus' | 'fable'
@@ -21,16 +23,34 @@ export type CacheUsage = {
   cache_creation_input_tokens: number
 }
 
-export type SwitchTotal = { count: number; tokens: number; usd: number; isGuess: boolean }
+// `guesses`: the figures in the total that are guesses (priced at Claude Code's default rate, or never measured).
+export type SwitchTotal = { count: number; tokens: number; usd: number; guesses: number }
+
+export type SpendReport = 'off' | 'total' | 'model' | 'step'
+
+/** The token counts of one response, as a `turn.step` stop chunk reports them. */
+export type Usage = {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+}
+
+export type { Bucket, Ledger, ModelSpend }
 
 export const MODEL_SWITCH_VALUES: readonly ModelSwitch[] = ['off', 'suggest', 'upgrade', 'multi-turn', 'always']
 
-export const NO_SWITCHES: SwitchTotal = { count: 0, tokens: 0, usd: 0, isGuess: false }
+export const SPEND_REPORT_VALUES: readonly SpendReport[] = ['off', 'total', 'model', 'step']
+
+export const NO_SWITCHES: SwitchTotal = { count: 0, tokens: 0, usd: 0, guesses: 0 }
 
 const RANK: Record<Family, number> = { haiku: 0, sonnet: 1, opus: 2, fable: 3 }
 
 export const readSetting = (value: unknown): ModelSwitch =>
   MODEL_SWITCH_VALUES.find(v => v === value) ?? 'off'
+
+export const readSpendReport = (value: unknown): SpendReport =>
+  SPEND_REPORT_VALUES.find(v => v === value) ?? 'off'
 
 // An alias (`opus`, `opus[1m]`), a full id (`claude-opus-5-5`) or a display
 // name (`Opus 5.5`); `best` is the fable alias. Anything else, `opusplan` and
@@ -86,7 +106,7 @@ export const askPrompt = (skill: string, model: string, sessionModel: string) =>
   stay: `Stay on ${short(sessionModel)}`,
 })
 
-const tokens = (n: number): string => (n < 1000 ? String(n) : `${Math.round(n / 1000)}k`)
+const tokens = (n: number): string => (n < 1000 ? String(n) : n < 999_500 ? `${Math.round(n / 1000)}k` : `${(n / 1e6).toFixed(1)}M`)
 
 const exact = (n: number): string => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
@@ -127,6 +147,19 @@ export const measureSwitch = (total: SwitchTotal, e: SwitchEvent, usage: CacheUs
   usd: Math.max(0, total.usd + measuredUsd(e, usage) - e.estimated_cache_write_usd),
 })
 
+const isPricedGuess = (e: SwitchEvent): boolean => e.prompt_cache_warm && e.pricing === 'default'
+
+// A switch the next one overtook before any request: the model in between cached
+// nothing, so its estimate (and any guess in it) comes off the total and the switch stays counted.
+export const skipSwitch = (total: SwitchTotal, e: SwitchEvent): SwitchTotal => ({
+  ...measureSwitch(total, e, { model: e.to_model, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }),
+  guesses: Math.max(0, total.guesses - (isPricedGuess(e) ? 1 : 0)),
+})
+
+// A switch whose first request ran on another model: its estimate stays, now a guess.
+export const guessSwitch = (total: SwitchTotal, e: SwitchEvent): SwitchTotal =>
+  isPricedGuess(e) ? total : { ...total, guesses: total.guesses + 1 }
+
 export const addSwitch = (total: SwitchTotal, e: SwitchEvent): SwitchTotal =>
   e.context_tokens === 0
     ? total
@@ -134,12 +167,104 @@ export const addSwitch = (total: SwitchTotal, e: SwitchEvent): SwitchTotal =>
         count: total.count + 1,
         tokens: total.tokens + (e.prompt_cache_warm ? e.context_tokens : 0),
         usd: total.usd + (e.prompt_cache_warm ? e.estimated_cache_write_usd : 0),
-        isGuess: total.isGuess || (e.prompt_cache_warm && e.pricing === 'default'),
+        guesses: total.guesses + (isPricedGuess(e) ? 1 : 0),
       }
 
 export const totalLine = (total: SwitchTotal): string | null =>
   total.count === 0
     ? null
     : `Switches: ${total.count} · ${total.tokens > 0 ? `${tokens(total.tokens)} tokens ` : ''}≈ ${usd(total.usd)}${
-        total.isGuess ? ' (rough guess)' : ''
+        total.guesses > 0 ? ' (rough guess)' : ''
       }`
+
+const NO_TOKENS: Bucket = { fresh: 0, cached: 0, written: 0, output: 0 }
+
+export const newLedger = (seen: number): Ledger => ({ seen, usd: 0, other: 0, models: {}, steps: {}, subagents: NO_TOKENS })
+
+const addUsage = (bucket: Bucket, u: Usage): Bucket => ({
+  fresh: bucket.fresh + (u.input_tokens ?? 0),
+  cached: bucket.cached + (u.cache_read_input_tokens ?? 0),
+  written: bucket.written + (u.cache_creation_input_tokens ?? 0),
+  output: bucket.output + (u.output_tokens ?? 0),
+})
+
+const hasTokens = (u: Usage): boolean =>
+  (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.output_tokens ?? 0) > 0
+
+// What `cost` adds to the last value seen. A lower `cost` is a counter that
+// restarted: it becomes the new baseline and credits nothing. `null` is no price at all.
+const rise = (ledger: Ledger, cost: number | null): { gain: number; seen: number } =>
+  cost === null ? { gain: 0, seen: ledger.seen } : { gain: Math.max(0, cost - ledger.seen), seen: cost }
+
+const addStep = (steps: Record<string, number>, step: string, gain: number): Record<string, number> =>
+  gain > 0 ? { ...steps, [step]: (steps[step] ?? 0) + gain } : steps
+
+/**
+ * Credits one response: its tokens, and the dollars `cost` rose by since the last
+ * credit, to its model and to `step`. A subagent's tokens go to their own bucket.
+ */
+export const creditResponse = (
+  ledger: Ledger,
+  r: { cost: number | null; model: string; step: string; usage: Usage; isSubagent: boolean },
+): Ledger => {
+  const { gain, seen } = rise(ledger, r.cost)
+  const key = family(r.model) ?? r.model
+  const prev: ModelSpend = ledger.models[key] ?? { ...NO_TOKENS, usd: 0, responses: 0 }
+  const counted = r.isSubagent ? prev : addUsage(prev, r.usage)
+  const responses = prev.responses + (hasTokens(r.usage) ? 1 : 0)
+
+  return {
+    ...ledger,
+    seen,
+    usd: ledger.usd + gain,
+    models: { ...ledger.models, [key]: { ...counted, usd: prev.usd + gain, responses } },
+    steps: addStep(ledger.steps, r.step, gain),
+    subagents: r.isSubagent ? addUsage(ledger.subagents, r.usage) : ledger.subagents,
+  }
+}
+
+/** Credits what `cost` rose by outside a response (compaction, background calls) to `other` and to `step`. */
+export const creditOther = (ledger: Ledger, cost: number | null, step: string): Ledger => {
+  const { gain, seen } = rise(ledger, cost)
+
+  return { ...ledger, seen, usd: ledger.usd + gain, other: ledger.other + gain, steps: addStep(ledger.steps, step, gain) }
+}
+
+// Decided from the whole session, not one response: a response can find its cost
+// already credited to a parallel one, and a model with any dollars has a price.
+export const isUnpriced = (m: ModelSpend): boolean => m.usd === 0 && m.responses > 0
+
+// The share of the spend the switches caused: only when the switch total is kept
+// (`showSwitchCost`), a switch was counted and something was spent.
+export const spendLine = (ledger: Ledger, switches: SwitchTotal | null): string => {
+  const hasUnpriced = Object.values(ledger.models).some(isUnpriced)
+  const share =
+    switches !== null && switches.count > 0 && ledger.usd > 0
+      ? ` · switches ${usd(switches.usd)} (${Math.min(100, Math.round((switches.usd / ledger.usd) * 100))}%)`
+      : ''
+
+  return `Spend ${usd(ledger.usd)}${hasUnpriced ? ' + unpriced' : ''}${share}`
+}
+
+const isEmpty = (b: Bucket): boolean => b.fresh + b.cached + b.written + b.output === 0
+
+const bucketLine = (b: Bucket): string => `${tokens(b.fresh + b.written)} new · ${tokens(b.cached)} cached · ${tokens(b.output)} out`
+
+// One line per model, dearest first, then subagent tokens and `other`. A model only
+// subagents used has its tokens on their line, so its own shows the dollars alone.
+export const modelLines = (ledger: Ledger): string[] => {
+  const rows: [string, string][] = Object.entries(ledger.models)
+    .sort(([, a], [, b]) => b.usd - a.usd)
+    .map(([name, m]) => [name, `${isUnpriced(m) ? 'unpriced' : usd(m.usd)}${isEmpty(m) ? '' : ` · ${bucketLine(m)}`}`])
+  if (!isEmpty(ledger.subagents)) rows.push(['subagents', bucketLine(ledger.subagents)])
+  if (ledger.other > 0) rows.push(['other', usd(ledger.other)])
+  const width = Math.max(0, ...rows.map(([name]) => name.length))
+
+  return rows.map(([name, text]) => `${name.padEnd(width)}  ${text}`)
+}
+
+export const stepLine = (ledger: Ledger): string | null => {
+  const rows = Object.entries(ledger.steps).sort(([, a], [, b]) => b - a)
+
+  return rows.length === 0 ? null : rows.map(([step, n]) => `${step} ${usd(n)}`).join(' · ')
+}
