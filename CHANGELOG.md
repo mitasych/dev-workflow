@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-10-24 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Added
+
+- Show what the session spends, per model and per workflow step. The new `spendReport` option (in
+  `/config`, default `off`) turns on a ledger in the workflow panel: `total` shows the session's spend and
+  the share the model switches caused, `model` adds tokens and dollars per model, `step` adds the spend
+  per `/workflow-*` step. Dollars are what Claude Code's own `/cost` total rose by, so no price list is
+  kept; a subagent's tokens, and compaction and background calls (`other`), get lines of their own.
+
+### Fixed
+
+- The panel's `Switches` total no longer keeps an estimate that was never replaced by a measurement. A
+  switch you change again before sending anything costs nothing and comes off the total; a first
+  request on another model leaves the estimate in place, marked `(rough guess)`; and a hot reload
+  between a switch and its request no longer loses the pending measurement. A switch measured after
+  `showSwitchCost` goes off is dropped instead of shown.
+
 ## [1.11.0] - 2026-10-24 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
