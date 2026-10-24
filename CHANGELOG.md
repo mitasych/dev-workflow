@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-10-24 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Added
+
+- Keep the session on a skill's model after its first turn. Claude Code applies a skill's `model:` to
+  that turn only, so the skills you go back and forth with (`/workflow-clarify`, `/workflow-plan`,
+  `/workflow-learn`, `/learn-code`) dropped to the session model on your first reply. The new
+  `modelSwitch` option (in `/config`, default `off`) chooses what happens when a skill names another
+  model: `suggest` asks in a question dialog, `upgrade` switches up only, `multi-turn` switches for the
+  four skills above, `always` follows every skill. The switch happens before the skill's prompt is
+  sent and acts only on this plugin's skills that you type. As with `/model`, a switch also saves the
+  model as your default; the next session puts your previous default back.
+- Show what a model switch costs in prompt cache. On every switch — yours included — a toast gives an
+  upper-bound estimate, then replaces it with the tokens and cost measured from the next response; the
+  workflow panel keeps a session total. A model whose cache is still warm re-writes little, so the
+  measured figure is often far below the estimate. Turn it off with the `showSwitchCost` option.
+
+### Changed
+
+- Four skills (`workflow-clarify`, `workflow-plan`, `workflow-learn`, `learn-code`) carry a new
+  `multi-turn: true` frontmatter key, which the panel mod reads; other clients ignore it.
+
 ## [1.10.3] - 2026-10-21 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Fixed

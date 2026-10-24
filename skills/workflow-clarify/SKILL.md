@@ -3,6 +3,7 @@ name: workflow-clarify
 description: "Workflow Step 1: Clarify & scope an issue before planning or implementation"
 argument-hint: "<issue description or Jira ticket key> [--source <obsidian note path | file path | URL>]"
 model: sonnet
+multi-turn: true
 disable-model-invocation: true
 ---
 

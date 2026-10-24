@@ -3,6 +3,7 @@ name: learn-code
 description: "Teach the learner any existing code — a file, module, commit, or commit range — Socratically, until they demonstrably understand it"
 argument-hint: "[--file <path> | --module <dir> | --commit <hash> | --range <since>..<until> | topic] [--source <obsidian note | file | URL>]"
 model: opus
+multi-turn: true
 disable-model-invocation: true
 ---
 

@@ -20,7 +20,69 @@ const world = (on: On, files: Record<string, string>) => {
     isReadFailing: false,
     isPaneHidden: false,
     lastOpen: null as { rows?: number; columns?: number } | null,
+    toasts: [] as string[],
+    toastMs: [] as (number | undefined)[],
+    // The session's model and the /config Model row; setting the row switches both.
+    model: 'claude-sonnet-5-5',
+    saved: 'sonnet',
+    denied: [] as string[],
+    sets: [] as string[],
+    // Raised while a config.set runs, where the engine reports the model switch.
+    onSet: null as (() => Promise<unknown>) | null,
+    isSetThrowing: false,
+    // The plugin's $.store, kept across "sessions" within a test.
+    store: new Map<string, unknown>(),
+    // The questions put to the person, and what they answer (null: dismissed).
+    asked: [] as string[],
+    answer: null as string | null,
+    // What the model request under the plugin reports having read and written.
+    usage: { model: 'claude-opus-5-5', input_tokens: 2, output_tokens: 9, cache_read_input_tokens: 600, cache_creation_input_tokens: 100000 },
   }
+  on('session.model', () => ({ value: w.model }))
+  on('config.list', () => ({
+    value: [{ key: 'model', label: 'Model', kind: 'choice' as const, value: w.saved, provider: { plugin: 'engine', tier: 'core' as const }, isLocked: false }],
+  }))
+  on('config.set', async (_$, e) => {
+    if (w.isSetThrowing) throw new Error('row locked')
+    const value = String(e.value)
+    if (w.denied.includes(value)) return { deny: `${value} is not an option` }
+    w.sets.push(value)
+    w.saved = value
+    w.model = `claude-${value}-5-5`
+    await w.onSet?.()
+
+    return { value }
+  })
+  on('ui.toast', (_$, e) => {
+    w.toasts.push(e.text)
+    w.toastMs.push(e.timeoutMs)
+
+    return { value: undefined }
+  })
+  on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
+    const q = e.questions[0]
+    w.asked.push(`${q?.question} [${q?.options.map(o => o.label).join(' | ')}]`)
+    if (w.answer === null) return { deny: 'dismissed' }
+
+    return { result: { questions: e.questions, answers: { [q?.question ?? '']: w.answer } }, text: w.answer }
+  })
+  on('store.get', (_$, e) => ({ value: w.store.get(e.key) }))
+  on('store.set', (_$, e) => {
+    w.store.set(e.key, e.value)
+
+    return { value: undefined }
+  })
+  on('store.delete', (_$, e) => {
+    w.store.delete(e.key)
+
+    return { value: undefined }
+  })
+  on('classic.PostModelSwitch', () => ({}))
+  on('turn.step', async function* (_$, e) {
+    yield { kind: 'stop' as const, stopReason: 'end_turn' as const, usage: w.usage }
+
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: w.usage }
+  })
   on('session.cwd', () => ({ value: ROOT }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('fs.exists', (_$, e) => ({ value: w.files.has(e.path) }))
@@ -617,4 +679,433 @@ test('with failed and partly criteria listed, the same pane drops the briefs', a
 
   expect(await ui.find({ type: 'Text', text: /the form says why/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Create the page component/ })).toBeUndefined()
+})
+
+const SWITCHED = {
+  from_model: 'claude-sonnet-5-5',
+  to_model: 'claude-opus-5-5',
+  requested_model: 'opus',
+  source: 'command',
+  context_tokens: 182340,
+  prompt_cache_warm: true,
+  cache_ttl: '1h',
+  estimated_cache_write_usd: 1.1396,
+  pricing: 'catalog',
+} as const
+
+const paneText = async ($: Engine, pattern: RegExp) => {
+  const ui = await $.ui.mount({
+    plugin: 'dev-workflow',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'workflow',
+    props: {
+      title: 'Workflow',
+      isFocused: false,
+      bodyColumns: 60,
+      placement: 'dock',
+      scroll: { offset: 0, bodyRows: 40 },
+      view: {},
+    },
+    viewport: { columns: 120, rows: 40 },
+  })
+  const text = (await ui.find({ type: 'Text', text: pattern }))?.text
+  await ui.unmount()
+
+  return text
+}
+
+test('a model switch toasts the cache it threw away, and the pane keeps the total', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  expect(await paneText($, /^Switches:/)).toBeUndefined()
+
+  await $.classic.PostModelSwitch(SWITCHED)
+  await $.classic.PostModelSwitch({ ...SWITCHED, prompt_cache_warm: false })
+
+  expect(w.toasts).toEqual([
+    'sonnet → opus · re-cache up to 182,340 tokens ≈ $1.14 — measuring…',
+    'sonnet → opus · cache already cold, nothing lost',
+  ])
+  expect(w.toastMs).toEqual([15000, 15000])
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 182k tokens ≈ $1.14')
+})
+
+test('the switch total shows on the empty pane too', async ($, on) => {
+  world(on, {})
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.classic.PostModelSwitch(SWITCHED)
+
+  expect(await paneText($, /No active workflow/)).toBeDefined()
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 1 · 182k tokens ≈ $1.14')
+})
+
+test('a resumed session restores its model without a toast or a count', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.classic.PostModelSwitch({ ...SWITCHED, source: 'resume' })
+  await $.classic.PostModelSwitch({ ...SWITCHED, context_tokens: 0 })
+
+  expect(w.toasts).toEqual([])
+  expect(await paneText($, /^Switches:/)).toBeUndefined()
+})
+
+test('showSwitchCost off: no toast and no total', { options: { showSwitchCost: false } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.classic.PostModelSwitch(SWITCHED)
+
+  expect(w.toasts).toEqual([])
+  expect(await paneText($, /^Switches:/)).toBeUndefined()
+})
+
+const TYPED = { 'disable-model-invocation': true } as const
+const OURS = { pluginName: 'dev-workflow' } as const
+const PLAN = { ...OURS, skill: 'dev-workflow:workflow-plan', text: 'go', frontmatter: { ...TYPED, model: 'opus', 'multi-turn': true } }
+const HELP = { ...OURS, skill: 'dev-workflow:workflow-help', text: 'go', frontmatter: { ...TYPED, model: 'haiku' } }
+const COMMIT = { ...OURS, skill: 'dev-workflow:workflow-commit', text: 'go', frontmatter: { ...TYPED, model: 'opus' } }
+const BRANCH = { ...OURS, skill: 'dev-workflow:workflow-branch', text: 'go', frontmatter: { 'disable-model-invocation': false, model: 'opus' } }
+
+test('modelSwitch is off by default: a skill never switches or hints', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt(PLAN)
+
+  expect(w.sets).toEqual([])
+  expect(w.toasts).toEqual([])
+})
+
+test('suggest asks before the skill\'s prompt is sent, and switches on a yes', { options: { modelSwitch: 'suggest' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.answer = 'Switch to opus'
+  await $.session.start(START)
+
+  const { text } = await $.skill.prompt(PLAN)
+
+  expect(text).toBe('go')
+  expect(w.asked).toEqual(['/workflow-plan runs on opus. Switch this session to opus too? It is on sonnet. [Switch to opus | Stay on sonnet]'])
+  expect(w.sets).toEqual(['opus'])
+  expect(w.toasts).toEqual(['Model → opus for /workflow-plan'])
+})
+
+test('suggest leaves the model alone on a no or a dismissed dialog', { options: { modelSwitch: 'suggest' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  w.answer = 'Stay on sonnet'
+  const stayed = await $.skill.prompt(PLAN)
+  w.answer = null
+  const dismissed = await $.skill.prompt(PLAN)
+
+  expect(stayed.text).toBe('go')
+  expect(dismissed.text).toBe('go')
+  expect(w.asked.length).toBe(2)
+  expect(w.sets).toEqual([])
+  expect(w.toasts).toEqual([])
+})
+
+test('suggest does not ask when the skill\'s model is the session\'s, or is unknown', { options: { modelSwitch: 'suggest' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.answer = 'Switch to opus'
+  await $.session.start(START)
+
+  await $.skill.prompt({ ...PLAN, frontmatter: { ...TYPED, model: 'sonnet' } })
+  await $.skill.prompt({ ...PLAN, frontmatter: { ...TYPED, model: 'inherit' } })
+
+  expect(w.asked).toEqual([])
+})
+
+test('upgrade switches before the skill\'s prompt is sent, keeps the default to restore, and a reload restores nothing', { options: { modelSwitch: 'upgrade' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const { text } = await $.skill.prompt(PLAN)
+
+  expect(text).toBe('go')
+  expect(w.sets).toEqual(['opus'])
+  expect(w.model).toBe('claude-opus-5-5')
+  expect(w.toasts).toEqual(['Model → opus for /workflow-plan'])
+  expect(w.toastMs).toEqual([15000])
+  expect(w.store.get('restoreModel')).toEqual({ original: 'sonnet', wrote: 'opus' })
+
+  // a hot reload runs session.start again in the same session
+  await $.session.start(START)
+
+  expect(w.sets).toEqual(['opus'])
+  expect(w.model).toBe('claude-opus-5-5')
+})
+
+test('with a warm cache the skill\'s switch is one toast that carries the cache it cost', { options: { modelSwitch: 'upgrade' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.onSet = () => $.classic.PostModelSwitch(SWITCHED)
+  await $.session.start(START)
+
+  await $.skill.prompt(PLAN)
+
+  expect(w.toasts).toEqual(['Model → opus for /workflow-plan · re-cache up to 182,340 tokens ≈ $1.14 — measuring…'])
+  expect(w.toastMs).toEqual([15000])
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 1 · 182k tokens ≈ $1.14')
+})
+
+const step = async ($: Engine, extra: { agentId?: string; model?: string } = {}) => {
+  const stream = $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 3, ...extra })
+  for await (const _ of stream) void _
+  await stream.result
+}
+
+test('the first request after a switch replaces the estimate with what it wrote, once', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await $.classic.PostModelSwitch(SWITCHED)
+
+  await step($)
+  await step($)
+
+  expect(w.toasts).toEqual([
+    'sonnet → opus · re-cache up to 182,340 tokens ≈ $1.14 — measuring…',
+    'sonnet → opus · re-cached 100,000 of 100,600 tokens ≈ $0.62 (measured)',
+  ])
+  expect(w.toastMs).toEqual([15000, 15000])
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 1 · 100k tokens ≈ $0.62')
+})
+
+test('a model whose cache survived is measured at what it re-wrote', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  w.usage = { ...w.usage, cache_read_input_tokens: 322131, cache_creation_input_tokens: 821 }
+  await $.classic.PostModelSwitch(SWITCHED)
+
+  await step($)
+
+  expect(w.toasts[1]).toBe('sonnet → opus · re-cached 821 of 322,952 tokens ≈ <$0.01 (measured)')
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 1 · 821 tokens ≈ <$0.01')
+})
+
+test('a subagent\'s request, another model\'s, or a cold-cache switch is never measured', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.classic.PostModelSwitch(SWITCHED)
+  await step($, { agentId: 'a1' })
+  w.usage = { ...w.usage, model: 'claude-haiku-5-5' }
+  await step($)
+  await $.classic.PostModelSwitch({ ...SWITCHED, prompt_cache_warm: false })
+  w.usage = { ...w.usage, model: 'claude-opus-5-5' }
+  await step($)
+
+  expect(w.toasts.filter(t => t.includes('(measured)'))).toEqual([])
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 182k tokens ≈ $1.14')
+})
+
+test('upgrade never switches down', { options: { modelSwitch: 'upgrade' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.model = 'claude-opus-5-5'
+  await $.session.start(START)
+
+  await $.skill.prompt(HELP)
+
+  expect(w.sets).toEqual([])
+})
+
+test('multi-turn switches only for a skill flagged multi-turn, learn-code included', { options: { modelSwitch: 'multi-turn' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt(COMMIT)
+  expect(w.sets).toEqual([])
+
+  await $.skill.prompt({ ...OURS, skill: 'dev-workflow:learn-code', text: 'go', frontmatter: { ...TYPED, model: 'opus', 'multi-turn': true } })
+  expect(w.sets).toEqual(['opus'])
+})
+
+test('inherit or no model never switches', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt({ ...PLAN, frontmatter: { ...TYPED, model: 'inherit' } })
+  await $.skill.prompt({ ...PLAN, frontmatter: { ...TYPED } })
+
+  expect(w.sets).toEqual([])
+})
+
+test('a skill the model may invoke never switches the session', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt(BRANCH)
+  await $.skill.prompt({ ...BRANCH, frontmatter: { model: 'opus' } })
+
+  expect(w.sets).toEqual([])
+  expect(w.toasts).toEqual([])
+})
+
+test('a refused switch says so once, leaves the skill running, and is not retried', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.denied = ['opus']
+  await $.session.start(START)
+
+  const { text } = await $.skill.prompt(PLAN)
+  await $.session.start(START)
+
+  expect(text).toBe('go')
+  expect(w.sets).toEqual([])
+  expect(w.toasts).toEqual(['Model not switched to opus: opus is not an option'])
+  expect(w.store.has('restoreModel')).toBe(false)
+})
+
+test('a default the person changed since the switch is kept', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.store.set('restoreModel', { original: 'sonnet', wrote: 'opus' })
+  w.saved = 'haiku'
+
+  await $.session.start(START)
+
+  expect(w.sets).toEqual([])
+})
+
+test('a full-id default the row refuses goes back as its alias', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.store.set('restoreModel', { original: 'claude-sonnet-5-5', wrote: 'opus' })
+  w.saved = 'opus'
+  w.denied = ['claude-sonnet-5-5']
+
+  await $.session.start(START)
+
+  expect(w.sets).toEqual(['sonnet'])
+})
+
+test('always follows each skill\'s model, up and down', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt(PLAN)
+  await $.skill.prompt(HELP)
+
+  expect(w.sets).toEqual(['opus', 'haiku'])
+  expect(w.model).toBe('claude-haiku-5-5')
+})
+
+test('a model the person chose in between does not pause the setting', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt(PLAN)
+  w.model = 'claude-sonnet-5-5'
+  w.saved = 'sonnet'
+  await $.skill.prompt(PLAN)
+
+  expect(w.sets).toEqual(['opus', 'opus'])
+})
+
+test('every kind of switch is reported, the person\'s picker and an automatic fallback too', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.classic.PostModelSwitch({ ...SWITCHED, source: 'picker' })
+  await $.classic.PostModelSwitch({ ...SWITCHED, source: 'auto', requested_model: null })
+
+  expect(w.toasts.length).toBe(2)
+  expect(await paneText($, /^Switches:/)).toBe('Switches: 2 · 365k tokens ≈ $2.28')
+})
+
+test('after several switches the default to restore is still the one from before the first', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt(PLAN)
+  await $.skill.prompt(HELP)
+
+  expect(w.saved).toBe('haiku')
+  expect(w.store.get('restoreModel')).toEqual({ original: 'sonnet', wrote: 'haiku' })
+})
+
+test('the next session puts the default back and forgets it', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.store.set('restoreModel', { original: 'sonnet', wrote: 'opus' })
+  w.saved = 'opus'
+
+  await $.session.start(START)
+
+  expect(w.sets).toEqual(['sonnet'])
+  expect(w.store.has('restoreModel')).toBe(false)
+})
+
+test('a deliberately picked variant of the same family is kept', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.store.set('restoreModel', { original: 'sonnet', wrote: 'opus' })
+  w.saved = 'opus[1m]'
+
+  await $.session.start(START)
+
+  expect(w.sets).toEqual([])
+})
+
+test('a skill from another plugin or the person\'s own skills never switches; this plugin\'s does by its prefix alone', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  await $.skill.prompt({ ...PLAN, pluginName: 'other', skill: 'other:workflow-plan' })
+  await $.skill.prompt({ skill: 'workflow-plan', text: 'go', frontmatter: PLAN.frontmatter })
+
+  expect(w.sets).toEqual([])
+
+  await $.skill.prompt({ skill: 'dev-workflow:workflow-plan', text: 'go', frontmatter: PLAN.frontmatter })
+
+  expect(w.sets).toEqual(['opus'])
+})
+
+test('a switch call that fails leaves no label for a later switch\'s toast', { options: { modelSwitch: 'always' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  w.isSetThrowing = true
+
+  const { text } = await $.skill.prompt(PLAN)
+  await $.classic.PostModelSwitch(SWITCHED)
+
+  expect(text).toBe('go')
+  expect(w.toasts).toEqual(['sonnet → opus · re-cache up to 182,340 tokens ≈ $1.14 — measuring…'])
+})
+
+test('after a switch the pane asks for a row for its total', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await $.classic.PostModelSwitch(SWITCHED)
+
+  await $.command.run({ ...PANEL, presentation: { isFullscreen: false, columns: 96 } })
+
+  expect(w.lastOpen).toEqual({ rows: 13, columns: 56 })
 })

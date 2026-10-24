@@ -4,6 +4,7 @@ description: "Workflow Step 2: Plan implementation steps from a clarified issue"
 argument-hint: "[issue description or --tdd] [--source <obsidian note | file | URL>]"
 allowed-tools: Read, Grep, Glob, Bash(find:*), Bash(cat:*), Bash(git log:*), Bash(git diff:*), Bash(git branch:*), Bash(ls:*), Bash(tree:*), Write(.workflow/*)
 model: opus
+multi-turn: true
 disable-model-invocation: true
 ---
 

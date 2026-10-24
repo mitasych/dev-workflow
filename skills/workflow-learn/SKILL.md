@@ -3,6 +3,7 @@ name: workflow-learn
 description: "Workflow Utility: teach the learner the implemented change until they demonstrably understand it"
 argument-hint: "[topic to focus on | --source <obsidian note | file | URL>]"
 model: opus
+multi-turn: true
 disable-model-invocation: true
 ---
 

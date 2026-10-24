@@ -2,6 +2,22 @@ import { atom, read, update } from 'claude-code'
 import type { Hook, Register } from 'claude-code'
 
 import type { CriterionState, Finding, StepId } from './types'
+import {
+  NO_SWITCHES,
+  addSwitch,
+  askPrompt,
+  costLine,
+  decide,
+  family,
+  isMeasurable,
+  isStillOurs,
+  measureSwitch,
+  measuredLine,
+  readSetting,
+  switchToast,
+  totalLine,
+} from './model'
+import type { CacheUsage, SwitchEvent } from './model'
 import { WORKFLOW_STEPS, parseScratchpad } from './parse'
 import { CRITERION_ORDER, deriveView } from './view'
 import type { Icon, StepRow } from './view'
@@ -11,6 +27,8 @@ type Api = Parameters<Hook<'session.start'>>[0]
 const PANE = 'workflow'
 const SCRATCHPAD = '.workflow/current-issue.md'
 const POLL_MS = 3000
+// A switch's toast carries what the cache loss cost, so it stays long enough to read.
+const SWITCH_TOAST_MS = 15000
 const MAX_EDITS = 500
 const DOCK_COLUMNS = 56
 // Where the terminal docks a pane beside the transcript instead of above the prompt.
@@ -21,6 +39,8 @@ const issue = atom({ plugin: 'dev-workflow', key: 'issue' } as const, null)
 const edits = atom({ plugin: 'dev-workflow', key: 'edits' } as const, [])
 const active = atom({ plugin: 'dev-workflow', key: 'active' } as const, null)
 const autoOpened = atom({ plugin: 'dev-workflow', key: 'autoOpened' } as const, false)
+const switches = atom({ plugin: 'dev-workflow', key: 'switches' } as const, NO_SWITCHES)
+const started = atom({ plugin: 'dev-workflow', key: 'started' } as const, false)
 
 const STEP_IDS = new Set<string>(WORKFLOW_STEPS.map(d => d.id))
 
@@ -72,9 +92,20 @@ const SEVERITY_TONE: Record<string, string> = { C: 'error', W: 'warning', S: 'su
 const findingTone = (f: Finding): string =>
   f.state === 'fixed' ? 'success' : f.state === 'declined' ? 'inactive' : (SEVERITY_TONE[f.id.charAt(0)] ?? 'text')
 
+// The skills whose frontmatter model the mod may follow.
+const MODEL_SKILLS = /(^|:)(workflow-[a-z-]+|learn-code)$/
+// $.store key: the default the mod's switches overwrote, for the next session to put back.
+const RESTORE = 'restoreModel'
+
+type Restore = { original: string; wrote: string }
+
 // Module state: starts over with each reload, like the module's other variables.
 let root: string | null = null
 let seenMtime = -1
+// What the mod's own switch announces; the cost toast of that switch carries it, so there is one toast.
+let lead: string | null = null
+// The last switch that threw a warm cache away: its first request after says what was re-written.
+let measuring: { e: SwitchEvent; lead: string | null } | null = null
 
 // The nearest ancestor of the session's cwd holding a scratchpad, not
 // climbing past the repository root.
@@ -119,15 +150,81 @@ const refresh = async ($: Api, isForced = false): Promise<void> => {
 }
 
 // Asks for rows enough to list the plan inline, and a sidebar's width when docked.
-const openPane = async ($: Api) => {
+const openPane = async ($: Api, isCostShown: boolean) => {
   const snap = await read($, snapshot)
   const open = snap?.findings.filter(f => f.state === 'open').length ?? 0
   // A snapshot kept from before the five markers is not a list yet.
   const list = snap?.criteria
   const urgent = Array.isArray(list) ? list.filter(c => isUrgent(c.state)).length : 0
-  const rows = Math.min(40, 9 + (snap?.plan.length ?? 0) + (open > 0 ? open + 2 : 0) + (urgent > 0 ? urgent + 2 : 0))
+  const hasTotal = isCostShown && totalLine(await read($, switches)) !== null
+  const rows = Math.min(
+    40,
+    9 + (hasTotal ? 1 : 0) + (snap?.plan.length ?? 0) + (open > 0 ? open + 2 : 0) + (urgent > 0 ? urgent + 2 : 0),
+  )
 
   return $.ui.open({ id: PANE, title: 'Workflow', rows, columns: DOCK_COLUMNS })
+}
+
+const isRestore = (v: unknown): v is Restore =>
+  typeof v === 'object' &&
+  v !== null &&
+  typeof (v as Restore).original === 'string' &&
+  typeof (v as Restore).wrote === 'string'
+
+// The `/config` Model row: the default new sessions start on.
+const savedModel = async ($: Api): Promise<string | null> => {
+  const row = (await $.config.list()).find(r => r.key === 'model')
+
+  return typeof row?.value === 'string' ? row.value : null
+}
+
+// Setting the row switches the session and saves it as the default, so the
+// default it replaced is kept for the next session to restore.
+const switchModel = async ($: Api, skill: string, model: string): Promise<void> => {
+  const kept = await $.store.get(RESTORE)
+  const original = isRestore(kept) ? kept.original : await savedModel($)
+  if (original !== null) await $.store.set(RESTORE, { original, wrote: model })
+
+  const label = switchToast(skill, model)
+  lead = label
+  let deny: string | undefined
+  let isAnnounced = false
+  try {
+    deny = (await $.config.set({ key: 'model', value: model })).deny
+  } finally {
+    // The cost toast took the label if it cleared it; a rejected call must not
+    // leave it for an unrelated later switch.
+    isAnnounced = lead === null
+    lead = null
+  }
+  if (deny === undefined) {
+    if (!isAnnounced) $.ui.toast(label, { timeoutMs: SWITCH_TOAST_MS })
+    return
+  }
+  if (isRestore(kept)) await $.store.set(RESTORE, kept)
+  else await $.store.delete(RESTORE)
+  $.ui.toast(`Model not switched to ${model}: ${deny}`)
+}
+
+// The first main-loop request after a switch replaces the estimate with what it wrote.
+const reportMeasured = async ($: Api, job: NonNullable<typeof measuring>, usage: CacheUsage): Promise<void> => {
+  if (!isMeasurable(job.e, usage)) return
+  $.ui.toast(measuredLine(job.e, usage, job.lead ?? undefined), { timeoutMs: SWITCH_TOAST_MS })
+  await update($, switches, total => measureSwitch(total, job.e, usage))
+}
+
+// Unless the person has chosen another default since. A full id the row
+// refuses goes back as its family's alias.
+const restoreDefault = async ($: Api): Promise<void> => {
+  const entry = await $.store.get(RESTORE)
+  if (!isRestore(entry)) return
+  await $.store.delete(RESTORE)
+  const current = await savedModel($)
+  if (current === null || !isStillOurs(current, entry.wrote)) return
+
+  const { deny } = await $.config.set({ key: 'model', value: entry.original })
+  const alias = family(entry.original)
+  if (deny !== undefined && alias !== null) await $.config.set({ key: 'model', value: alias })
 }
 
 // A failure here only costs the panel; it never reaches the skill or tool.
@@ -149,6 +246,12 @@ export const register: Register = (on, options) => {
     )
     await guarded(() => refresh($, true))
     $.clock.every(POLL_MS, () => void guarded(() => refresh($)))
+    // A reload runs session.start again in the same session, whose own switch
+    // must not be undone; $.state outlives the reload, not the process.
+    if (!(await read($, started))) {
+      await update($, started, () => true)
+      await guarded(() => restoreDefault($))
+    }
 
     return next(e)
   })
@@ -162,12 +265,38 @@ export const register: Register = (on, options) => {
       await refresh($, true)
       if (options.autoOpen === true && (await read($, snapshot)) && !(await read($, autoOpened))) {
         await update($, autoOpened, () => true)
-        await openPane($)
+        await openPane($, options.showSwitchCost !== false)
       }
     })
 
     return next(e)
   })
+
+  // Before the skill's prompt reaches the model, so every turn of the skill runs
+  // on its model (`suggest` asks first). Only this plugin's skills, and only one the person typed:
+  // the one the model may invoke (workflow-branch) fires mid-turn, and a subagent's preload
+  // carries no agent id here.
+  on('skill.prompt', { skill: MODEL_SKILLS }, async ($, e, next) => {
+    const fm: Record<string, unknown> = e.frontmatter
+    const setting = readSetting(options.modelSwitch)
+    // Plugin skills arrive namespaced (`dev-workflow:workflow-plan`) whether or not pluginName is set.
+    const isOurs = e.pluginName === $.plugin.name || e.skill.startsWith(`${$.plugin.name}:`)
+    if (setting !== 'off' && isOurs && fm['disable-model-invocation'] === true) {
+      await guarded(async () => {
+        const sessionModel = await $.session.model()
+        const decision = decide({ setting, skillModel: fm.model, sessionModel, isMultiTurn: fm['multi-turn'] === true })
+        if (decision.kind === 'switch') await switchModel($, e.skill, decision.model)
+        if (decision.kind === 'suggest') {
+          // The skill waits for the answer; a dismissed dialog rejects and leaves the model as it is.
+          const ask = askPrompt(e.skill, decision.model, sessionModel)
+          const answer = await $.ui.ask(ask.question, { options: [ask.switch, ask.stay], header: ask.header })
+          if (answer === ask.switch) await switchModel($, e.skill, decision.model)
+        }
+      })
+    }
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: ['Write', 'Edit'] }, async ($, e, next) => {
     const ran = await next(e)
@@ -198,6 +327,40 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // Every model switch, the person's own included; a resume restores, it does not switch.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    if (e.source !== 'resume' && options.showSwitchCost !== false) {
+      await guarded(async () => {
+        const used = lead
+        const line = costLine(e, used ?? undefined)
+        measuring = null
+        if (line === null) return
+        lead = null
+        $.ui.toast(line, { timeoutMs: SWITCH_TOAST_MS })
+        await update($, switches, total => addSwitch(total, e))
+        if (e.prompt_cache_warm) measuring = { e, lead: used }
+      })
+    }
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Reads each response's cache usage on its way past; the response is passed on untouched.
+  on('turn.step', async function* ($, e, next) {
+    const stream = next(e)
+    for await (const chunk of stream) {
+      if (chunk.kind === 'stop' && chunk.usage !== null && e.agentId === undefined && measuring !== null) {
+        const job = measuring
+        const usage = chunk.usage
+        measuring = null
+        await guarded(() => reportMeasured($, job, usage))
+      }
+      yield chunk
+    }
+
+    return await stream.result
+  })
+
   on('command.run', { command: 'workflow-panel' }, async ($, e) => {
     const pane = (await $.ui.panes()).find(p => p.id === PANE)
     // Open but behind another tab: opening again brings it forward.
@@ -207,7 +370,7 @@ export const register: Register = (on, options) => {
       return { text: 'Workflow panel closed.' }
     }
     await guarded(() => refresh($, true))
-    const opened = await openPane($)
+    const opened = await openPane($, options.showSwitchCost !== false)
     if (!opened.isPlaced) {
       return { text: `Workflow panel opened but not drawn: ${opened.reason}` }
     }
@@ -257,9 +420,19 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     const snap = await read($, snapshot)
+    const spent = options.showSwitchCost !== false ? totalLine(await read($, switches)) : null
 
     if (!snap) {
-      return <Text color={TONE.empty}>No active workflow — start with /workflow-clarify</Text>
+      const empty = <Text color={TONE.empty}>No active workflow — start with /workflow-clarify</Text>
+
+      return spent === null ? (
+        empty
+      ) : (
+        <Box flexDirection="column">
+          {empty}
+          <Text color={TONE.meta}>{spent}</Text>
+        </Box>
+      )
     }
 
     const view = deriveView(snap, await read($, edits), await read($, active))
@@ -278,7 +451,7 @@ export const register: Register = (on, options) => {
     const lists =
       (view.findings.length > 0 ? listed.length + 2 + (settled > 0 ? 1 : 0) : 0) +
       (pending.length > 0 ? pending.length + 2 : 0)
-    const fixed = 8
+    const fixed = 8 + (spent === null ? 0 : 1)
     const hasBrief = fixed + view.plan.length * 2 + lists <= e.props.scroll.bodyRows
     const subtitle = [view.mode === 'tdd' ? 'TDD' : view.mode === 'regular' ? 'Regular' : null, view.branch]
       .filter(Boolean)
@@ -293,6 +466,11 @@ export const register: Register = (on, options) => {
         {subtitle !== '' && (
           <Text color={TONE.meta} wrap="truncate">
             {subtitle}
+          </Text>
+        )}
+        {spent !== null && (
+          <Text color={TONE.meta} wrap="truncate">
+            {spent}
           </Text>
         )}
         {criteria.total > 0 && (

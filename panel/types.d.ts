@@ -65,6 +65,10 @@ declare module 'claude-code' {
       /** The /workflow-* skill most recently started. */
       active: StepId | null
       autoOpened: boolean
+      /** Model switches this session; `tokens` and `usd` sum only the warm caches they threw away. */
+      switches: { count: number; tokens: number; usd: number; isGuess: boolean }
+      /** Set by the first session.start; a hot reload finds it set and leaves the saved default alone. */
+      started: boolean
     }
   }
 }

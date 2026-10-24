@@ -1,7 +1,7 @@
 {
   "name": "dev-workflow",
   "displayName": "Development Workflow",
-  "version": "1.10.3",
+  "version": "1.11.0",
   "description": "Structured, multi-step development workflow: clarify → plan → implement → test → review → document → release, with an optional TDD (red → green → refactor) path. Each step is a /workflow-* skill you invoke explicitly, except branch creation which can also be offered automatically; steps share state via .workflow/current-issue.md in the working project.",
   "author": {
     "name": "Aleksandr Mitasov",
@@ -18,6 +18,19 @@
       "title": "Auto-open workflow panel",
       "description": "Open the workflow panel on the first /workflow-* skill of a session",
       "default": false
+    },
+    "modelSwitch": {
+      "type": "string",
+      "title": "Switch model by skill",
+      "description": "Keep the session on a skill's frontmatter model after its first turn: off, suggest (asks before switching), upgrade (never to a smaller model), multi-turn (skills marked multi-turn), or always. A switch also saves the model as your default; the next session puts your default back",
+      "options": ["off", "suggest", "upgrade", "multi-turn", "always"],
+      "default": "off"
+    },
+    "showSwitchCost": {
+      "type": "boolean",
+      "title": "Show model switch cost",
+      "description": "On every model switch, show what it costs in prompt cache: first an upper-bound estimate, then the tokens and cost measured from the next response. The workflow panel keeps a session total",
+      "default": true
     }
   }
 }

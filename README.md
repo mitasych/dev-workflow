@@ -135,7 +135,7 @@ stored in plugin data.
 ## Status panel (Claude Code only)
 
 A small Claude Code mod, kept whole in `panel/`, watches `.workflow/current-issue.md` and draws it,
-with no model calls. Only the Claude Code manifest points at it (`hooks`, `types`), so Cursor, Codex,
+with no model calls (it can also switch the session model; see [Model switching](#model-switching-claude-code-only)). Only the Claude Code manifest points at it (`hooks`, `types`), so Cursor, Codex,
 and Copilot do not read it; the skills work there unchanged, without the panel.
 
 - **Band** — always above the prompt while a scratchpad exists: the issue, then the workflow steps
@@ -163,6 +163,47 @@ status replaces the guess once written. Edits made through `Bash`, or outside th
 Where an organization manages Claude Code, hooks on `skill.prompt` only run for plugins the organization
 lists, so the panel then refreshes from file edits and a 3-second poll instead of on skill start.
 
+## Model switching (Claude Code only)
+
+Every skill names a `model:` in its frontmatter, but Claude Code applies it to the invoking turn only:
+your next prompt is back on the session model. That matters for the skills you go back and forth with —
+`workflow-clarify`, `workflow-plan`, `workflow-learn` and `learn-code`, marked `multi-turn: true`. The
+same mod in `panel/` can keep the session on the skill's model, set by two plugin options in `/config`:
+
+- **`modelSwitch`** (default `off`) — what happens when a `/workflow-*` skill or `/learn-code` names a
+  model other than the session's:
+
+  | Value | Effect |
+  |---|---|
+  | `off` | Nothing; the skill's model lasts its first turn only |
+  | `suggest` | Asks first, in Claude Code's question dialog: `/workflow-plan runs on opus. Switch this session to opus too? It is on sonnet.` — *Switch to opus* / *Stay on sonnet*. The skill waits for your answer; its first turn runs on its own model either way, so this only decides your follow-ups. A dismissed dialog changes nothing |
+  | `upgrade` | Switches when the skill's model is larger (haiku < sonnet < opus < fable), never down |
+  | `multi-turn` | Switches, either way, for skills marked `multi-turn: true` only |
+  | `always` | Switches to whatever the skill names |
+
+  The switch happens when the skill starts, before its prompt is sent, so every turn of the skill
+  runs on its model. It goes through the `/config` Model row, so no confirmation dialog interrupts
+  you, and a toast names it. It acts only on this plugin's skills that you type
+  (`disable-model-invocation: true`), never on `/workflow-branch`, which Claude may also start on its
+  own. Like `/model`, it also saves the model as your default for new sessions; the next session puts
+  your previous default back, unless you chose another one in between. A refused switch (an
+  `availableModels` allowlist, auto mode) is said once and not retried. The skill's model is applied
+  as written (`opus`), so a `[1m]` long-context session switches to the plain variant.
+- **`showSwitchCost`** (default on) — every model switch, your own `/model` included, shows what it
+  costs in prompt cache. At the switch it is an upper bound from Claude Code's own estimate,
+  `sonnet → opus · re-cache up to 182,340 tokens ≈ $1.14 — measuring…` (`(rough guess)` where it had no
+  price for the model). The first request after the switch then replaces it with what it really
+  wrote: `sonnet → opus · re-cached 100,000 of 100,600 tokens ≈ $0.62 (measured)`. A model whose cache is
+  still warm (you switched away and back within the hour) re-writes little, so the measured figure is
+  often far below the estimate. A cold cache loses nothing and says so. Both toasts stay 15 seconds, and
+  a switch the mod makes shares its toast with the skill (`Model → opus for /workflow-plan · …`). The
+  panel keeps a session total, corrected as measurements arrive: `Switches: 3 · 540k tokens ≈ $2.40`. A
+  skill's one-turn model is a switch too, but Claude Code reports none for it, so it isn't counted.
+
+A switch gives the new model the whole conversation to cache again, unless its cache from earlier in
+the hour is still warm, so `always` can cost the most. The `options` picker needs Claude Code 2.1.271
+or later, and the mod API calls it relies on were verified on 2.1.308.
+
 ## Layout
 
 ```
@@ -171,7 +212,7 @@ lists, so the panel then refreshes from file edits and a 3-second poll instead o
   .claude-plugin/plugin.json     # Claude Code manifest (name, version, "skills": "./skills/")
   panel/                         # Claude Code mod (status band + panel), all of it:
     hooks.json                   #   names register.tsx; the manifest's "hooks" points here
-    register.tsx parse.ts view.ts
+    register.tsx parse.ts view.ts model.ts
     types.d.ts                   #   the mod's $.state contract (manifest "types")
     tests/                       #   parser, view, and module tests (claude plugin test .)
   skills/
