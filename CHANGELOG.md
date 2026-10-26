@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-10-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Added
+
+- Show what switching models saved against running the session on Opus alone. With `spendReport` at
+  `total` or above, the workflow panel adds a line under `Spend`: `vs opus-only: saved $0.84 (43%)`, or
+  `vs opus-only: $0.30 more (12%)` when the session cost more. It prices the same main-loop tokens at
+  Opus, reads what each switch re-wrote as cache reads, and leaves subagents and `other` as spent.
+  Opus's price is fitted from the session's own Opus responses (or taken from a switch to it until it
+  has answered), so no price list is kept. It is an estimate: how many turns Opus would have needed in
+  place of haiku or sonnet is unknowable. The line needs `showSwitchCost` on and is hidden while a
+  model is `unpriced`.
+
+### Changed
+
+- A session already running 1.12.0 starts its spend ledger afresh after updating: the stored ledger
+  gained fields, so it is read as empty and seeded again from what the session has cost so far.
+
 ## [1.12.0] - 2026-10-24 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
