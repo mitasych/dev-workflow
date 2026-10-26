@@ -549,10 +549,13 @@ export const register: Register = (on, options) => {
     }
   })
 
-  // Always-on band above the prompt: the issue and its workflow steps.
+  // Always-on band above the prompt: the issue and its workflow steps, on top of what other mods drew beneath.
+  // Wrapped, not replaced: a replacing hook hides every band beneath it. Core's own drawing is left out, as 1.13.0
+  // did: a probe saw a blank row with it, not told apart from the row the engine may keep under any band.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const below = await next(e)
     const snap = await read($, snapshot)
-    if (e.props.hasSurvey || !snap) return next(e)
+    if (e.props.hasSurvey || !snap) return below
 
     const { Box, Text } = $.ui.resolve(e)
     const view = deriveView(snap, await read($, edits), await read($, active))
@@ -574,6 +577,7 @@ export const register: Register = (on, options) => {
             )
           })}
         </Box>
+        {below.type === 'engine' ? null : below}
       </Box>
     )
   })

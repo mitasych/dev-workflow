@@ -140,7 +140,9 @@ and Copilot do not read it; the skills work there unchanged, without the panel.
 
 - **Band** — always above the prompt while a scratchpad exists: the issue, then the workflow steps
   (Regular or TDD, per the plan's mode) as `✓clarify ✓plan ▸implement ~3/5 ·review …` — ✓ done,
-  ▸ current (with plan progress while building), ✗ failed, · pending.
+  ▸ current (with plan progress while building), ✗ failed, · pending. A band another mod draws beneath this
+  one stays, under it. The reverse is up to that mod: one that draws its band without keeping what is
+  beneath it hides this band whenever it loads above it.
 - **Panel** — `/workflow-panel` shows or hides the detail: acceptance-criteria progress (a count per
   state, then each criterion not yet met), every plan
   step with its status (plus a one-line brief when there is room), and the latest review's findings

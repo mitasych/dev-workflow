@@ -8,8 +8,9 @@ const ROOT = '/proj'
 const SCRATCH = `${ROOT}/.workflow/current-issue.md`
 const DONE = `${mid}\n## Implementation Status\n\n**Steps completed**: 3 of 3\n**Blocked steps**: none\n`
 
-// The engine beneath the plugin, in memory: a file map, the status line, panes.
-const world = (on: On, files: Record<string, string>) => {
+// The engine beneath the plugin, in memory: a file map, the status line, panes. `beneath` is what draws above
+// the prompt under the plugin: core's own drawing, as the real engine answers with no other mod, or another mod's line.
+const world = (on: On, files: Record<string, string>, beneath: 'engine' | { text: string } = 'engine') => {
   const w = {
     files: new Map(Object.entries(files)),
     mtime: 1,
@@ -138,8 +139,9 @@ const world = (on: On, files: Record<string, string>) => {
     value: w.panes.map(id => ({ id, title: id, isShown: !w.isPaneHidden, isFocused: false, isPlaced: true })),
   }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
-  // the engine's own band, drawn when the plugin passes
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => $.ui.resolve(e).Box({}))
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) =>
+    beneath === 'engine' ? { type: 'engine' as const, ref: 1 } : $.ui.resolve(e).Text({ children: [beneath.text] }),
+  )
   on('skill.prompt', (_$, e) => ({ text: e.text }))
   on('tool.call', { tool: 'Edit' }, (_$, e) => ({
     result: { filePath: e.file_path, oldString: e.old_string, newString: e.new_string },
@@ -160,15 +162,17 @@ const PANEL = {
   presentation: { isFullscreen: false, columns: 120 },
 } as const
 const START = { cwd: ROOT, surface: 'terminal', isInteractive: true } as const
-// The band above the prompt: its head line and the step marked current.
-const band = async ($: Engine) => {
-  const ui = await $.ui.mount({
+const mountBand = ($: Engine, hasSurvey = false) =>
+  $.ui.mount({
     plugin: 'dev-workflow',
     surface: 'terminal',
     component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} },
+    props: { hasSurvey, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} },
     viewport: { columns: 120, rows: 40 },
   })
+// The band above the prompt: its head line and the step marked current.
+const band = async ($: Engine) => {
+  const ui = await mountBand($)
   const head = (await ui.find({ type: 'Text', text: / · / }))?.text
   const current = (await ui.find({ type: 'Text', text: /^▸/ }))?.text
   await ui.unmount()
@@ -192,6 +196,55 @@ test('with no scratchpad the band is the engine\'s own', async ($, on) => {
   await $.session.start(START)
 
   expect((await band($)).head).toBeUndefined()
+})
+
+const OTHER = { text: 'another mod: 3 jobs running' }
+
+test('another mod\'s band beneath ours is kept, drawn under ours', async ($, on) => {
+  world(on, { [SCRATCH]: mid }, OTHER)
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await mountBand($)
+  const drawn = await ui.drawn()
+
+  expect(drawn.type === 'Box' && drawn.children).toMatchObject([
+    { type: 'Text', children: ['APP-12 · Add settings page'] },
+    { type: 'Box' },
+    { type: 'Text', children: [OTHER.text] },
+  ])
+})
+
+test('with no scratchpad another mod\'s band is drawn as it came', async ($, on) => {
+  world(on, {}, OTHER)
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await mountBand($)
+
+  expect(await ui.drawn()).toMatchObject({ type: 'Text', children: [OTHER.text] })
+})
+
+test('a survey holding the band leaves another mod\'s band as it came', async ($, on) => {
+  world(on, { [SCRATCH]: mid }, OTHER)
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await mountBand($, true)
+
+  expect(await ui.drawn()).toMatchObject({ type: 'Text', children: [OTHER.text] })
+})
+
+test('core\'s own drawing beneath is left out of the band', async ($, on) => {
+  world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+
+  const ui = await mountBand($)
+  const drawn = await ui.drawn()
+
+  expect(drawn.type === 'Box' && drawn.children).toHaveLength(2)
+  expect(await band($)).toEqual({ head: 'APP-12 · Add settings page', current: '▸implement 0/3' })
 })
 
 test('a typed workflow skill marks its step in progress', async ($, on) => {
