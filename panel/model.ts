@@ -160,6 +160,13 @@ export const skipSwitch = (total: SwitchTotal, e: SwitchEvent): SwitchTotal => (
 export const guessSwitch = (total: SwitchTotal, e: SwitchEvent): SwitchTotal =>
   isPricedGuess(e) ? total : { ...total, guesses: total.guesses + 1 }
 
+/**
+ * The total once the pending switch `e` is settled: by `usage`, the response that measures it, as
+ * the measuring step will do; or, with that response still to come, without the switch.
+ */
+export const settleSwitch = (total: SwitchTotal, e: SwitchEvent, usage: CacheUsage | null): SwitchTotal =>
+  usage === null ? skipSwitch(total, e) : isMeasurable(e, usage) ? measureSwitch(total, e, usage) : guessSwitch(total, e)
+
 export const addSwitch = (total: SwitchTotal, e: SwitchEvent): SwitchTotal =>
   e.context_tokens === 0
     ? total
@@ -179,7 +186,16 @@ export const totalLine = (total: SwitchTotal): string | null =>
 
 const NO_TOKENS: Bucket = { fresh: 0, cached: 0, written: 0, output: 0 }
 
-export const newLedger = (seen: number): Ledger => ({ seen, usd: 0, other: 0, models: {}, steps: {}, subagents: NO_TOKENS })
+export const newLedger = (seen: number, switches: SwitchTotal = NO_SWITCHES): Ledger => ({
+  seen,
+  usd: 0,
+  other: 0,
+  models: {},
+  steps: {},
+  subagents: NO_TOKENS,
+  opusRate: null,
+  switchBase: { tokens: switches.tokens, guesses: switches.guesses },
+})
 
 const addUsage = (bucket: Bucket, u: Usage): Bucket => ({
   fresh: bucket.fresh + (u.input_tokens ?? 0),
@@ -209,7 +225,7 @@ export const creditResponse = (
 ): Ledger => {
   const { gain, seen } = rise(ledger, r.cost)
   const key = family(r.model) ?? r.model
-  const prev: ModelSpend = ledger.models[key] ?? { ...NO_TOKENS, usd: 0, responses: 0 }
+  const prev: ModelSpend = ledger.models[key] ?? { ...NO_TOKENS, usd: 0, subagentUsd: 0, responses: 0 }
   const counted = r.isSubagent ? prev : addUsage(prev, r.usage)
   const responses = prev.responses + (hasTokens(r.usage) ? 1 : 0)
 
@@ -217,7 +233,10 @@ export const creditResponse = (
     ...ledger,
     seen,
     usd: ledger.usd + gain,
-    models: { ...ledger.models, [key]: { ...counted, usd: prev.usd + gain, responses } },
+    models: {
+      ...ledger.models,
+      [key]: { ...counted, usd: prev.usd + gain, subagentUsd: prev.subagentUsd + (r.isSubagent ? gain : 0), responses },
+    },
     steps: addStep(ledger.steps, r.step, gain),
     subagents: r.isSubagent ? addUsage(ledger.subagents, r.usage) : ledger.subagents,
   }
@@ -244,6 +263,73 @@ export const spendLine = (ledger: Ledger, switches: SwitchTotal | null): string 
       : ''
 
   return `Spend ${usd(ledger.usd)}${hasUnpriced ? ' + unpriced' : ''}${share}`
+}
+
+// Every model is priced at the same ratios to its input price. Fitted on a real session (DW-10 step 5):
+// writes at the 1h rate (2×), reads at 0.05×, not the 0.1× of the list price. Output stays at 5×: it
+// fitted higher (5.7–6.5×) only because background spend lands on the responses.
+const WEIGHT: Bucket = { fresh: 1, written: 2, cached: 0.05, output: 5 }
+
+// What a 5m write costs against the 1h one's 2×.
+const WRITE_RATIO = { '1h': 2, '5m': 1.25 }
+
+const weigh = (b: Bucket): number =>
+  b.fresh * WEIGHT.fresh + b.written * WEIGHT.written + b.cached * WEIGHT.cached + b.output * WEIGHT.output
+
+/** Opus's price per input token from a switch to it, or null when the switch can't say (another model, no context, a guessed price). */
+export const opusRateOf = (
+  e: Pick<SwitchEvent, 'to_model' | 'context_tokens' | 'estimated_cache_write_usd' | 'pricing'> & { cache_ttl: '5m' | '1h' },
+): number | null => {
+  if (family(e.to_model) !== 'opus' || e.context_tokens <= 0 || e.pricing === 'default') return null
+  const rate = e.estimated_cache_write_usd / e.context_tokens / WRITE_RATIO[e.cache_ttl]
+
+  return rate > 0 ? rate : null
+}
+
+// Fitted from the session's own Opus responses: their dollars over their weighed tokens, so no
+// price table exists to go stale. Until it has both, the rate of the last switch to Opus.
+const opusPrice = (ledger: Ledger): number | null => {
+  const opus = ledger.models.opus
+  const dollars = opus === undefined ? 0 : opus.usd - opus.subagentUsd
+  const weight = opus === undefined ? 0 : weigh(opus)
+
+  return dollars > 0 && weight > 0 ? dollars / weight : ledger.opusRate
+}
+
+/**
+ * What the session would have cost on Opus alone: the main loop's tokens at Opus's price,
+ * the `rewritten` tokens (switch re-writes) read from the cache instead. Subagents and `other` stay as spent.
+ */
+export const opusOnly = (ledger: Ledger, rewritten: number): number | null => {
+  const price = opusPrice(ledger)
+  if (price === null) return null
+  const models = Object.values(ledger.models)
+  const main = models.reduce<Bucket>(
+    (n, m) => ({ fresh: n.fresh + m.fresh, cached: n.cached + m.cached, written: n.written + m.written, output: n.output + m.output }),
+    NO_TOKENS,
+  )
+  const moved = Math.min(rewritten, main.written)
+
+  return (
+    price * weigh({ ...main, written: main.written - moved, cached: main.cached + moved }) +
+    models.reduce((n, m) => n + m.subagentUsd, 0) +
+    ledger.other
+  )
+}
+
+/**
+ * The saving against `opusOnly`, or null while the figure can't be trusted: no switch total, no price, a model without one.
+ * Only the switches since the ledger was seeded count: earlier re-writes are not in its tokens.
+ */
+export const savingsLine = (ledger: Ledger, switches: SwitchTotal | null): string | null => {
+  if (switches === null || ledger.usd <= 0 || Object.values(ledger.models).some(isUnpriced)) return null
+  const cost = opusOnly(ledger, Math.max(0, switches.tokens - ledger.switchBase.tokens))
+  if (cost === null || cost <= 0) return null
+  const cents = Math.round((cost - ledger.usd) * 100) / 100
+  const share = Math.round((Math.abs(cents) / cost) * 100)
+  const isGuess = switches.guesses > ledger.switchBase.guesses
+
+  return `vs opus-only: ${cents < 0 ? `${usd(-cents)} more` : `saved ${usd(cents)}`} (${share}%)${isGuess ? ' (rough guess)' : ''}`
 }
 
 const isEmpty = (b: Bucket): boolean => b.fresh + b.cached + b.written + b.output === 0

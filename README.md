@@ -217,9 +217,32 @@ same mod in `panel/` can keep the session on the skill's model, set by plugin op
   No price table is kept, so a model Claude Code has no price for reads `unpriced`. `new` is fresh
   input plus cache writes, `cached` is cache reads. A subagent's tokens get their own `subagents`
   line, while its dollars stay with its model; a compaction and calls made between turns are the
-  `other` line. The switch share needs `showSwitchCost` on and is left out otherwise. The ledger counts from the moment the option is on (a resumed session
-  starts from what it had already cost), and turning it off drops it. Two subagents answering at the
-  same moment can swap a few cents between their models; the total stays exact.
+  `other` line. Those background calls are still billed to a model, so `/cost`'s per-model dollars
+  include them while the panel's model lines don't: a model line can read a few cents under `/cost`,
+  and the difference is in `other`. The totals match. The switch share needs `showSwitchCost` on and
+  is left out otherwise. The ledger counts from the moment the option is on (a resumed session starts
+  from what it had already cost), and turning it off drops it. Two subagents answering at the same
+  moment can swap a few cents between their models; the total stays exact.
+
+  From `total` up, one more line says what the session saved against running it on Opus alone:
+  `vs opus-only: saved $0.84 (43%)`, or `vs opus-only: $0.30 more (12%)` when it cost more. It prices
+  the same main-loop tokens at Opus, with what each switch re-wrote read from the cache instead, and
+  leaves subagents and `other` as spent. Opus's price is fitted from the session's own Opus responses
+  (their dollars over their tokens, weighed at the price ratios of one real session: a cache write
+  costs 2× the input price, a read 0.05× and output 5×; the 1h write rate is what Claude Code uses),
+  so no price table is kept. Until Opus has answered, the rate of the last switch to it stands in;
+  with neither, there is no line. It is an estimate: how many turns and tokens Opus would really have
+  needed in place of haiku or sonnet is unknowable, a skill's one-turn model is a switch that isn't
+  counted (which overstates the saving a little), models may count the same text in different numbers
+  of tokens, and `[1m]` Opus variants share one fitted price. The ratios were measured on one account
+  and its price list; if yours differs, the figure drifts, most in long sessions where cache reads
+  dominate. The line needs `showSwitchCost` on, is hidden while a model is `unpriced`, and reads
+  `(rough guess)` when the switch total does. Only switches since the ledger started count, and only
+  those made while `showSwitchCost` was on: switches made with it off are not measured, so turning it
+  back on shows a saving that is too high. Responses that finish at the same moment can take each
+  other's cost (see above), and here that also moves Opus's fitted price, most visibly early in a
+  session, while Opus has answered little. A session that never switched shows it too: on Opus alone
+  it reads `saved $0.00 (0%)`.
 
 A switch gives the new model the whole conversation to cache again, unless its cache from earlier in
 the hour is still warm, so `always` can cost the most. The `options` picker needs Claude Code 2.1.271

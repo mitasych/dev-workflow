@@ -56,8 +56,11 @@ export type Snapshot = {
 
 export type Bucket = { fresh: number; cached: number; written: number; output: number }
 
-/** `responses` counts those with tokens, a subagent's included, so a model that never cost anything reads unpriced. */
-export type ModelSpend = Bucket & { usd: number; responses: number }
+/**
+ * `responses` counts those with tokens, a subagent's included, so a model that never cost anything reads unpriced.
+ * `subagentUsd` is the part of `usd` its subagents' responses cost; the tokens above are the main loop's only.
+ */
+export type ModelSpend = Bucket & { usd: number; subagentUsd: number; responses: number }
 
 /**
  * What the session spent. `seen` is the last `cost.usd` read: every credit is
@@ -74,6 +77,10 @@ export type Ledger = {
   steps: Record<string, number>
   /** Tokens of subagent responses; their dollars sit in `models`. */
   subagents: Bucket
+  /** Opus's price per input token, from the last switch to it; only used while the ledger can't fit one. */
+  opusRate: number | null
+  /** The switch total when the ledger was seeded: switches before it are not the ledger's to undo. */
+  switchBase: { tokens: number; guesses: number }
 }
 
 declare module 'claude-code' {
@@ -109,8 +116,11 @@ declare module 'claude-code' {
       } | null
       /** Set by the first session.start; a hot reload finds it set and leaves the saved default alone. */
       started: boolean
-      /** What the session spent since `spendReport` was switched on; null while it is off. */
-      spend: Ledger | null
+      /**
+       * What the session spent since `spendReport` was switched on; null while it is off.
+       * Shaped: 1.12.0 kept no `subagentUsd`, `opusRate` or `switchBase`.
+       */
+      spend: Shaped<Ledger | null>
     }
   }
 }

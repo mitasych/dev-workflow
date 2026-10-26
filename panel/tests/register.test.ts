@@ -1347,6 +1347,187 @@ test('the empty-state pane shows the block too', { options: { spendReport: 'mode
   expect(await paneText($, /^opus/)).toBe('opus  $0.50 · 100k new · 600 cached · 9 out')
 })
 
+for (const level of ['total', 'model', 'step'] as const) {
+  test(`${level}: the opus-only line sits under the spend`, { options: { spendReport: level } }, async ($, on) => {
+    const w = world(on, { [SCRATCH]: mid })
+    mock.clock(on)
+    await $.session.start(START)
+    await priced($, w, 0.5)
+
+    expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: saved $0.00 (0%)')
+  })
+}
+
+test('off: no opus-only line', async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await priced($, w, 0.5)
+
+  expect(await paneText($, /^vs opus-only/)).toBeUndefined()
+})
+
+test('showSwitchCost off hides the opus-only line, which needs the switch total', { options: { spendReport: 'total', showSwitchCost: false } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await priced($, w, 0.5)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.50')
+  expect(await paneText($, /^vs opus-only/)).toBeUndefined()
+})
+
+test('what haiku spent is priced at the Opus price fitted from the Opus response', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  w.usage = HAIKU
+  await priced($, w, 0.1)
+  w.usage = { model: 'claude-opus-5-5', input_tokens: 2, output_tokens: 9, cache_read_input_tokens: 600, cache_creation_input_tokens: 100000 }
+  await priced($, w, 1.0)
+
+  // Opus: 200,077 weighed tokens for $1.00; haiku's 83,788 would have cost $0.4188 there, not $0.10.
+  expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: saved $0.32 (23%)')
+})
+
+test("a subagent's dollars stay as spent and out of Opus's price", { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.session.start(START)
+  await priced($, w, 0.5)
+  await priced($, w, 0.2, { agentId: 'a1' })
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.70')
+  expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: saved $0.00 (0%)')
+})
+
+test('a switch to Opus gives its price before any Opus response', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  w.usage = HAIKU
+  await $.session.start(START)
+  await priced($, w, 0.1)
+  await $.classic.PostModelSwitch({ ...SWITCHED, context_tokens: 1000, estimated_cache_write_usd: 0.00625 })
+  await priced($, w, 0.3)
+
+  // 3.125e-6 a token (the 1h write rate, halved). Haiku's two responses weigh 167,576; 1,000 of the written
+  // tokens were the switch's re-write, read instead: 165,626 × 3.125e-6 = $0.5176 against $0.40 spent. The
+  // second response ran on haiku, not Opus, so the switch's size stays a guess.
+  expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: saved $0.12 (23%) (rough guess)')
+})
+
+test('a switch from before the ledger was seeded is not taken from its writes', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.classic.PostModelSwitch(SWITCHED)
+  // Seeds the ledger, then measures the switch: 100,000 re-written, before the ledger counted anything.
+  await step($)
+  await priced($, w, 0.5)
+
+  expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: saved $0.00 (0%)')
+})
+
+test('a switch still unmeasured when the ledger is seeded is taken from the writes its response adds', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.classic.PostModelSwitch(SWITCHED)
+  await $.session.start(START)
+  // The ledger counts this response, whose 100,000 written tokens are the switch's re-write.
+  await priced($, w, 0.5)
+
+  // p = 0.5 / 200,077; moved to reads: 2 + 0.05 · 100,600 + 5 · 9 = 5,077 weighed tokens = $0.0127,
+  // so $0.49 more, 0.49 / 0.0127 = 3862%.
+  expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: $0.49 more (3862%)')
+})
+
+test('a switch pending at seeding and overtaken after it leaves the next switch counted in full', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.classic.PostModelSwitch(SWITCHED)
+  await $.session.start(START)
+  await $.classic.PostModelSwitch(SWITCHED)
+  await priced($, w, 0.5)
+
+  // Only the second switch's measured 100,000 is moved to reads, as in the test above.
+  expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: $0.49 more (3862%)')
+})
+
+test("a subagent's response seeding the ledger does not measure a pending switch", { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  await $.classic.PostModelSwitch(SWITCHED)
+  await priced($, w, 0, { agentId: 'a1' })
+  await priced($, w, 0.5)
+
+  // The main loop's response is the one that measures it, and the ledger's.
+  expect(await paneText($, /^vs opus-only/)).toBe('vs opus-only: $0.49 more (3862%)')
+})
+
+test('a credit that finds the ledger dropped under it seeds nothing', { options: { spendReport: 'total' } }, async ($, on) => {
+  world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  const zero = { fresh: 0, cached: 0, written: 0, output: 0 }
+  const ledger = { seen: 52, usd: 0.5, other: 0, models: {}, steps: {}, subagents: zero, opusRate: null, switchBase: { tokens: 0, guesses: 0 } }
+  let stored: unknown = { shape: 'spend-2', value: ledger }
+  let version = 1
+  on('state.get', (_$, e, next) => {
+    if (e.key !== 'spend') return next(e)
+    const read = { value: stored, version }
+    // The option goes off right after this credit saw the ledger running.
+    stored = { shape: 'spend-2', value: null }
+    version += 1
+
+    return { value: read }
+  })
+  on('state.set', (_$, e, next) => {
+    if (e.key !== 'spend') return next(e)
+    stored = e.value
+    version += 1
+
+    return { value: { isSet: true, version } }
+  })
+
+  await $.turn.start({ text: 'go', turnId: 't1' })
+
+  expect(stored).toEqual({ shape: 'spend-2', value: null })
+})
+
+test('a running ledger credits a response without reading the switch total', { options: { spendReport: 'total' } }, async ($, on) => {
+  const w = world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  let reads = 0
+  let isCounting = false
+  on('state.get', (_$, e, next) => {
+    if (isCounting && e.key === 'switches') reads += 1
+
+    return next(e)
+  })
+  await $.session.start(START)
+  isCounting = true
+  await priced($, w, 0.2)
+  await priced($, w, 0.3)
+
+  expect(reads).toBe(0)
+})
+
+test('a ledger stored by 1.12.0 reads as none after a reload and is seeded afresh', { options: { spendReport: 'total' } }, async ($, on) => {
+  world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  let stored: unknown = { seen: 52, usd: 9, other: 0, models: {}, steps: {}, subagents: { fresh: 0, cached: 0, written: 0, output: 0 } }
+  let version = 1
+  on('state.get', (_$, e, next) => (e.key === 'spend' ? { value: { value: stored, version } } : next(e)))
+  on('state.set', (_$, e, next) => {
+    if (e.key !== 'spend') return next(e)
+    stored = e.value
+    version += 1
+
+    return { value: { isSet: true, version } }
+  })
+  await $.session.start(START)
+
+  expect(await paneText($, /^Spend/)).toBe('Spend $0.00')
+})
+
 const quietLedger = async ($: Engine, on: On, w: World) => {
   let writes = 0
   on('state.set', async (_$, e, next) => {
@@ -1371,6 +1552,21 @@ test('spendReport off: a turn, a response and a compaction write no state and sh
 
   expect(await quietLedger($, on, w)).toBe(0)
   expect(await paneText($, /^Spend/)).toBeUndefined()
+})
+
+test('spendReport off: a switch to Opus writes no ledger', async ($, on) => {
+  world(on, { [SCRATCH]: mid })
+  mock.clock(on)
+  let spendWrites = 0
+  on('state.set', async (_$, e, next) => {
+    if (e.key === 'spend') spendWrites += 1
+
+    return next(e)
+  })
+  await $.session.start(START)
+  await $.classic.PostModelSwitch(SWITCHED)
+
+  expect(spendWrites).toBe(0)
 })
 
 test('an unlisted spendReport reads as off', { options: { spendReport: 'everything' } }, async ($, on) => {
@@ -1473,7 +1669,8 @@ test('turning spendReport off drops the ledger at the next event, without a relo
   world(on, { [SCRATCH]: mid })
   mock.clock(on)
   // The ledger kept while the option was on, before this event.
-  let stored: unknown = { seen: 52, usd: 0.5, other: 0, models: {}, steps: {}, subagents: { fresh: 0, cached: 0, written: 0, output: 0 } }
+  const ledger = { seen: 52, usd: 0.5, other: 0, models: {}, steps: {}, subagents: { fresh: 0, cached: 0, written: 0, output: 0 }, opusRate: null }
+  let stored: unknown = { shape: 'spend-2', value: ledger }
   let version = 1
   let writes = 0
   on('state.get', (_$, e, next) => (e.key === 'spend' ? { value: { value: stored, version } } : next(e)))
@@ -1489,7 +1686,7 @@ test('turning spendReport off drops the ledger at the next event, without a relo
 
   await $.turn.start({ text: 'go', turnId: 't1' })
 
-  expect(stored).toBeNull()
+  expect(stored).toEqual({ shape: 'spend-2', value: null })
   expect(writes).toBe(1)
 })
 
@@ -1501,5 +1698,5 @@ test('the pane asks for rows for the spend lines, two for the steps line', { opt
 
   await $.command.run({ ...PANEL, presentation: { isFullscreen: false, columns: 96 } })
 
-  expect(w.lastOpen).toEqual({ rows: 16, columns: 56 })
+  expect(w.lastOpen).toEqual({ rows: 17, columns: 56 })
 })

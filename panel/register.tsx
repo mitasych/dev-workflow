@@ -18,15 +18,18 @@ import {
   measuredLine,
   modelLines,
   newLedger,
+  opusRateOf,
   readSetting,
   readSpendReport,
+  savingsLine,
+  settleSwitch,
   skipSwitch,
   spendLine,
   stepLine,
   switchToast,
   totalLine,
 } from './model'
-import type { CacheUsage, SpendReport, SwitchEvent, Usage } from './model'
+import type { CacheUsage, SpendReport, SwitchEvent, SwitchTotal, Usage } from './model'
 import { WORKFLOW_STEPS, parseScratchpad } from './parse'
 import { CRITERION_ORDER, deriveView } from './view'
 import type { Icon, StepRow } from './view'
@@ -54,7 +57,8 @@ const autoOpened = atom({ plugin: 'dev-workflow', key: 'autoOpened' } as const, 
 // A total 1.11.0 stored (with `isGuess`) reads as none after a reload, rather than as a broken count.
 const switches = atom({ plugin: 'dev-workflow', key: 'switches' } as const, NO_SWITCHES, { shape: 'switches-2' })
 const started = atom({ plugin: 'dev-workflow', key: 'started' } as const, false)
-const spend = atom({ plugin: 'dev-workflow', key: 'spend' } as const, null)
+// A ledger 1.12.0 stored (no `subagentUsd`, no `opusRate`) reads as none after a reload, and is seeded afresh.
+const spend = atom({ plugin: 'dev-workflow', key: 'spend' } as const, null, { shape: 'spend-2' })
 // The last switch that threw a warm cache away: its first request after says what was re-written.
 const pendingSwitch = atom({ plugin: 'dev-workflow', key: 'pendingSwitch' } as const, null)
 
@@ -176,9 +180,10 @@ const spendBlock = async ($: Api, options: Options): Promise<SpendBlock | null> 
   const ledger = await read($, spend)
   if (report === 'off' || ledger === null) return null
   const total = options.showSwitchCost !== false ? await read($, switches) : null
+  const saved = savingsLine(ledger, total)
 
   return {
-    lines: [spendLine(ledger, total), ...(report === 'total' ? [] : modelLines(ledger))],
+    lines: [spendLine(ledger, total), ...(saved === null ? [] : [saved]), ...(report === 'total' ? [] : modelLines(ledger))],
     steps: report === 'step' ? stepLine(ledger) : null,
   }
 }
@@ -198,12 +203,35 @@ const dropLedger = async ($: Api): Promise<void> => {
 // response's model when `hit` is its stop chunk, else to `other` (a compaction,
 // background calls). The first call after the setting turns on only seeds the baseline.
 // A call the queue gave up on (`isLive` false) credits nothing: its cost read is stale.
+// The switch total a new ledger starts from. A switch still waiting for its measuring response:
+// when this call seeds the ledger on that very response, the response isn't credited, so the switch
+// goes in the base as measured; when the response is still to come, it is the ledger's, and the
+// switch stays out of the base.
+const seedBase = async ($: Api, hit: Hit | undefined): Promise<SwitchTotal> => {
+  const job = await read($, pendingSwitch)
+  const total = await read($, switches)
+  if (job === null) return total
+  const measuring =
+    hit === undefined || hit.isSubagent
+      ? null
+      : {
+          model: hit.model,
+          cache_read_input_tokens: hit.usage.cache_read_input_tokens ?? 0,
+          cache_creation_input_tokens: hit.usage.cache_creation_input_tokens ?? 0,
+        }
+
+  return settleSwitch(total, job.e, measuring)
+}
+
 const settleNow = async ($: Api, hit: Hit | undefined, isLive: () => boolean): Promise<void> => {
   const cost = (await $.session.usage()).cost?.usd ?? null
   const step = (await read($, active)) ?? 'none'
+  // Only a seeding call needs the base, so a running ledger skips the two reads. A call that found the
+  // ledger running and then finds it gone was overtaken by the option going off: it seeds nothing.
+  const base = (await read($, spend)) === null ? await seedBase($, hit) : null
   await update($, spend, ledger => {
     if (!isLive()) return ledger
-    if (ledger === null) return newLedger(cost ?? 0)
+    if (ledger === null) return base === null ? ledger : newLedger(cost ?? 0, base)
 
     return hit ? creditResponse(ledger, { ...hit, cost, step }) : creditOther(ledger, cost, step)
   })
@@ -434,6 +462,11 @@ export const register: Register = (on, options) => {
         if (overtaken !== null) {
           await update($, pendingSwitch, () => null)
           await update($, switches, total => skipSwitch(total, overtaken.e))
+        }
+        // Opus's price, for a ledger that has no Opus response to fit one from yet.
+        const rate = opusRateOf(e)
+        if (rate !== null && readSpendReport(options.spendReport) !== 'off') {
+          await update($, spend, ledger => (ledger === null ? ledger : { ...ledger, opusRate: rate }))
         }
         if (line === null) return
         lead = null

@@ -17,8 +17,12 @@ import {
   measuredLine,
   modelLines,
   newLedger,
+  opusOnly,
+  opusRateOf,
   readSetting,
   readSpendReport,
+  savingsLine,
+  settleSwitch,
   askPrompt,
   skipSwitch,
   spendLine,
@@ -278,6 +282,16 @@ describe('spend ledger', () => {
     expect(l.subagents).toEqual({ fresh: 2, cached: 0, written: 41883, output: 4 })
     expect(l.models.haiku).toMatchObject({ fresh: 0, cached: 0, written: 0, output: 0 })
     near(l.models.haiku?.usd, 0.01)
+    near(l.models.haiku?.subagentUsd, 0.01)
+  })
+
+  test("only a subagent's response adds to subagentUsd, and the model lines still show the whole dollars", () => {
+    let l = response(start, 52.34, 'claude-opus-5-5', 'plan', usage(2, 0, 5000, 100))
+    l = response(l, 52.44, 'claude-opus-5-5', 'plan', usage(2, 0, 800, 10), true)
+
+    near(l.models.opus?.usd, 0.4)
+    near(l.models.opus?.subagentUsd, 0.1)
+    expect(modelLines(l)[0]).toMatch(/^opus +\$0\.40 · /)
   })
 
   test('spend outside a response goes to other, not to the next response', () => {
@@ -381,5 +395,133 @@ describe('spend lines', () => {
 
     expect(modelLines(big)[0]).toBe('sonnet  $1234.56 · 4.0M new · 12.3M cached · 250k out')
     for (const line of modelLines(big)) expect(line.length).toBeLessThanOrEqual(56)
+  })
+})
+
+describe('savings against an opus-only session', () => {
+  // Opus: 160,000 weighed tokens for $1.60, so $1e-5 each. Haiku: the same tokens for $0.32.
+  const OPUS = usage(0, 200_000, 50_000, 10_000)
+  const HAIKU = usage(0, 400_000, 20_000, 20_000)
+  const none = { count: 0, tokens: 0, usd: 0, guesses: 0 }
+
+  const mixed = (): Ledger => {
+    let l = response(newLedger(0), 1.6, 'claude-opus-5-5', 'plan', OPUS)
+    l = response(l, 1.92, 'claude-haiku-5-5', 'implement', HAIKU)
+    // A subagent on Opus and one on haiku: their dollars stay as spent in both worlds.
+    l = response(l, 2.42, 'claude-opus-5-5', 'implement', usage(1, 9, 9, 9), true)
+    l = response(l, 2.52, 'claude-haiku-5-5', 'implement', usage(1, 9, 9, 9), true)
+
+    return creditOther(l, 2.57, 'implement')
+  }
+
+  test('prices the main loop at the fitted Opus price, with the switch re-writes read from the cache', () => {
+    const l = mixed()
+
+    // 1e-5 × (0 + 2·(70,000 − 20,000) + 0.05·(600,000 + 20,000) + 5·30,000) + 0.5 + 0.1 + 0.05
+    near(opusOnly(l, 20_000), 2.81 + 0.65)
+    near(opusOnly(l, 0), 3.2 + 0.65)
+    expect(savingsLine(l, { count: 1, tokens: 20_000, usd: 0.1, guesses: 0 })).toBe('vs opus-only: saved $0.89 (26%)')
+  })
+
+  test("fits the price from the main loop alone: a subagent's dollars are not Opus's price", () => {
+    const l = response(response(newLedger(0), 1.6, 'claude-opus-5-5', 'plan', OPUS), 2.6, 'claude-opus-5-5', 'plan', OPUS, true)
+
+    near(opusOnly(l, 0), 1.6 + 1.0)
+  })
+
+  test('an all-Opus session saved nothing', () => {
+    const l = response(response(newLedger(0), 1.6, 'claude-opus-5-5', 'plan', OPUS), 3.0, 'claude-opus-5-5', 'implement', usage(5, 7, 11, 13))
+
+    expect(savingsLine(l, none)).toBe('vs opus-only: saved $0.00 (0%)')
+  })
+
+  test('a session dearer than opus-only reads as more, with positive numbers', () => {
+    let l = response(newLedger(0), 1.6, 'claude-opus-5-5', 'plan', OPUS)
+    l = response(l, 5.6, 'claude-fable-5-1', 'plan', OPUS)
+
+    expect(savingsLine(l, none)).toBe('vs opus-only: $2.40 more (75%)')
+  })
+
+  test('moves no more than was written, and a full re-write after a switch back to Opus becomes reads', () => {
+    const l = response(newLedger(0), 1.6, 'claude-opus-5-5', 'plan', OPUS)
+
+    // All 50,000 written tokens read instead: 1e-5 × (0.05·250,000 + 5·10,000).
+    near(opusOnly(l, 1e9), 0.625)
+    // 300,000 of the written tokens were a switch's re-write: 2× → 0.05× of Opus's price.
+    const back = response(newLedger(0), 4.0, 'claude-opus-5-5', 'plan', usage(0, 700_000, 350_000, 20_000))
+    const p = 4.0 / (0.05 * 700_000 + 2 * 350_000 + 5 * 20_000)
+
+    near(opusOnly(back, 0)! - opusOnly(back, 300_000)!, p * 300_000 * 1.95)
+  })
+
+  test('opusRateOf halves a 1h cache-write rate, divides a 5m one by 1.25, and refuses what cannot say', () => {
+    const e = { to_model: 'claude-opus-5-5', context_tokens: 500_000, estimated_cache_write_usd: 4, pricing: 'catalog', cache_ttl: '1h' as const }
+
+    near(opusRateOf(e) ?? NaN, 4e-6)
+    near(opusRateOf({ ...e, cache_ttl: '5m' }) ?? NaN, 6.4e-6)
+    expect(opusRateOf({ ...e, pricing: 'default' })).toBeNull()
+    expect(opusRateOf({ ...e, to_model: 'claude-sonnet-5-5' })).toBeNull()
+    expect(opusRateOf({ ...e, context_tokens: 0 })).toBeNull()
+    expect(opusRateOf({ ...e, estimated_cache_write_usd: 0 })).toBeNull()
+  })
+
+  test("Opus's own responses win; the rate of a switch only stands in until it has some", () => {
+    const haiku = response(newLedger(0), 0.32, 'claude-haiku-5-5', 'plan', HAIKU)
+    const switched = { ...haiku, opusRate: 1e-5 }
+    const fitted = response({ ...switched, opusRate: 9e-5 }, 1.92, 'claude-opus-5-5', 'plan', OPUS)
+    // Opus ran only as a subagent: no main-loop tokens to fit from.
+    const sub = response({ ...switched }, 1.92, 'claude-opus-5-5', 'plan', OPUS, true)
+
+    expect(savingsLine(switched, none)).toBe('vs opus-only: saved $1.28 (80%)')
+    near(opusOnly(fitted, 0), 3.2)
+    near(opusOnly(sub, 0)! - 1.6, 1.6)
+  })
+
+  test('shows nothing it cannot stand behind', () => {
+    const haiku = response(newLedger(0), 0.32, 'claude-haiku-5-5', 'plan', HAIKU)
+
+    expect(savingsLine(haiku, none)).toBeNull()
+    expect(savingsLine(mixed(), null)).toBeNull()
+    expect(savingsLine({ ...newLedger(5), opusRate: 1e-5 }, none)).toBeNull()
+    expect(savingsLine(response(mixed(), 2.57, 'mystery', 'plan', usage(1, 0, 0, 1)), none)).toBeNull()
+  })
+
+  test('an Opus line that cost nothing is unpriced: no figure, even with a rate from a switch', () => {
+    const l = response(newLedger(0), 0, 'claude-opus-5-5', 'plan', OPUS)
+
+    expect(savingsLine({ ...response(l, 0.32, 'claude-haiku-5-5', 'plan', HAIKU), opusRate: 1e-5 }, none)).toBeNull()
+  })
+
+  test('switches from before the ledger was seeded are not taken from its writes, nor make it rough', () => {
+    const before = { count: 2, tokens: 300_000, usd: 1, guesses: 1 }
+    const l = response(newLedger(0, before), 1.6, 'claude-opus-5-5', 'plan', OPUS)
+
+    expect(savingsLine(l, before)).toBe('vs opus-only: saved $0.00 (0%)')
+    // One more switch since, re-writing 20,000: 1e-5 × (2·30,000 + 0.05·220,000 + 5·10,000) = $1.21.
+    expect(savingsLine(l, { count: 3, tokens: 320_000, usd: 1.1, guesses: 1 })).toBe('vs opus-only: $0.39 more (32%)')
+  })
+
+  test('settleSwitch: a pending switch measured, guessed, or left out until its response comes', () => {
+    const e: SwitchEvent = { ...SWITCH, context_tokens: 182_340, estimated_cache_write_usd: 1.14 }
+    const total = addSwitch(NO_SWITCHES, e)
+    const usage = { model: e.to_model, cache_read_input_tokens: 600, cache_creation_input_tokens: 100_000 }
+
+    expect(settleSwitch(total, e, usage)).toEqual(measureSwitch(total, e, usage))
+    expect(settleSwitch(total, e, { ...usage, model: 'claude-haiku-5-5' })).toEqual(guessSwitch(total, e))
+    expect(settleSwitch(total, e, null)).toMatchObject({ count: 1, tokens: 0, guesses: 0 })
+  })
+
+  test('marks the figure rough while the switch total holds guesses', () => {
+    expect(savingsLine(mixed(), { count: 1, tokens: 20_000, usd: 0.1, guesses: 1 })).toBe('vs opus-only: saved $0.89 (26%) (rough guess)')
+  })
+
+  test('the widest line fits 56 columns', () => {
+    let l = response(newLedger(0), 1.6, 'claude-opus-5-5', 'plan', OPUS)
+    l = response(l, 1236.16, 'claude-fable-5-1', 'plan', usage(900, 12_300_000, 4_000_000, 250_000))
+
+    const line = savingsLine(l, { count: 3, tokens: 1, usd: 1, guesses: 1 })
+
+    expect(line).toMatch(/^vs opus-only: \$\d+\.\d\d more/)
+    expect(line!.length).toBeLessThanOrEqual(56)
   })
 })
