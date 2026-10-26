@@ -1,7 +1,7 @@
 {
   "name": "dev-workflow",
   "displayName": "Development Workflow",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "Structured, multi-step development workflow: clarify → plan → implement → test → review → document → release, with an optional TDD (red → green → refactor) path. Each step is a /workflow-* skill you invoke explicitly, except branch creation which can also be offered automatically; steps share state via .workflow/current-issue.md in the working project.",
   "author": {
     "name": "Aleksandr Mitasov",

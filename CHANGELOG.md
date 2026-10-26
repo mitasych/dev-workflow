@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-10-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+
+### Fixed
+
+- The workflow band above the prompt no longer hides another mod's line there. It used to replace
+  whatever a mod beneath it drew, so with a second mod installed one of the two lines came and went
+  with the scratchpad state. The band now draws on top and keeps the other mod's line under it. A mod
+  that loads above this one and draws its band without keeping what is beneath it can still hide it.
+
 ## [1.13.0] - 2026-10-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
 
 ### Added
