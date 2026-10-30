@@ -7,6 +7,10 @@ import dw4 from './fixtures/dw4'
 import mid from './fixtures/mid'
 import tdd from './fixtures/tdd'
 
+const blocked = (value: string) =>
+  parseScratchpad(`# Issue: x\n## Implementation Status\n\n**Steps completed**: 1 of 14\n**Blocked steps**: ${value}\n`)
+    .written?.blocked
+
 describe('parseScratchpad', () => {
   test('reads a finished Regular scratchpad (DW-2)', () => {
     const s = parseScratchpad(dw2)
@@ -91,6 +95,57 @@ describe('parseScratchpad', () => {
     expect(s.plan[1]?.brief).toBe('Sleep 2^n seconds between attempts.')
     expect(s.plan[1]?.files).toEqual(['src/client.ts', 'src/sleep.ts'])
     expect(s.written).toEqual({ done: 2, total: 3, blocked: [3] })
+  })
+
+  test('Blocked steps reads only the leading list; a note after it is ignored', () => {
+    expect(blocked('10 (k3d functional check — Maxwell silent since 2026-10-23)')).toEqual([10])
+    expect(blocked('3, 5')).toEqual([3, 5])
+    expect(blocked('3,5')).toEqual([3, 5])
+    expect(blocked('Steps 3 and 5')).toEqual([3, 5])
+    expect(blocked('step 3 & 5')).toEqual([3, 5])
+    expect(blocked('#3')).toEqual([3])
+    expect(blocked('3 5')).toEqual([3])
+    expect(blocked('3, 5 — 5 waits on step 2')).toEqual([3, 5])
+    expect(blocked('none')).toEqual([])
+    expect(blocked('None — all done')).toEqual([])
+    expect(blocked('none (Step 5 was run afterwards)')).toEqual([])
+    expect(blocked('waiting on k3d')).toEqual([])
+    expect(blocked('STEPS 3')).toEqual([3])
+    expect(blocked('Cycle 3')).toEqual([3])
+  })
+
+  test('Blocked steps accepts an Oxford comma, a repeated word, and a colon after step or cycle', () => {
+    expect(blocked('Steps 3, 5, and 7')).toEqual([3, 5, 7])
+    expect(blocked('step 3, step 5')).toEqual([3, 5])
+    expect(blocked('Steps: 3')).toEqual([3])
+    expect(blocked('Steps 3 and step 5')).toEqual([3, 5])
+    expect(blocked('3, and 5')).toEqual([3, 5])
+    expect(blocked('3,5, and 7')).toEqual([3, 5, 7])
+    expect(blocked('Cycles: 2, 4')).toEqual([2, 4])
+  })
+
+  test('Blocked steps stops at a dangling separator or a word that only starts with "and"', () => {
+    expect(blocked('3, and')).toEqual([3])
+    expect(blocked('3, step')).toEqual([3])
+    expect(blocked('3, waiting on k3d')).toEqual([3])
+    expect(blocked('3 andromeda 5')).toEqual([3])
+  })
+
+  // A backtracking regex takes seconds here (~3 s cubic at 3000); a linear one well under 1 ms.
+  test('Blocked steps does not stall on a long run of spaces after the word', () => {
+    const start = performance.now()
+    const value = blocked(`step${' '.repeat(3000)}x`)
+
+    expect(value).toEqual([])
+    expect(performance.now() - start).toBeLessThan(500)
+  })
+
+  test('Blocked steps values already in archived scratchpads keep their meaning', () => {
+    const live = '7 (live look at the panel: automated checks pass, the sidebar and colors are not yet seen in a real session)'
+    const later = 'none (step 8 marked done by the user after a live check: `/workflow-panel` opens the band — see Issues)'
+
+    expect(blocked(live)).toEqual([7])
+    expect(blocked(later)).toEqual([])
   })
 
   test('ignores headings inside fenced code', () => {

@@ -75,7 +75,7 @@ After all steps are done (or if stopped early), update `.workflow/current-issue.
 
 **Completed**: <date>
 **Steps completed**: <X of Y>
-**Blocked steps**: <list or "none">
+**Blocked steps**: <comma-separated step numbers, or "none">
 
 ### Changes Made
 - `<file path>` — <what was done>
@@ -85,6 +85,9 @@ After all steps are done (or if stopped early), update `.workflow/current-issue.
 - <issue description, if any>
 - (none if clean)
 ```
+
+`**Blocked steps**` holds only step numbers: the status panel reads the leading numbers as steps.
+Put the reason for each blocked step under `### Issues Encountered`.
 
 Create a `.gitignore` file within the `.workflow` directory containing a single line `*`, if such a file does not already exist.
 

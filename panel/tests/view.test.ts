@@ -61,6 +61,22 @@ describe('deriveView', () => {
     expect(v.plan.map(r => `${r.icon}${r.inferred ? '~' : ''}`)).toEqual(['✅', '❌', '⬜'])
   })
 
+  test('digits in a blocked-step note do not block other steps', () => {
+    const md = `${mid}\n## Implementation Status\n\n**Steps completed**: 1 of 3\n**Blocked steps**: 2 (waiting on k3d since 2026-10-23)\n`
+    const v = deriveView(parseScratchpad(md), [], null)
+
+    expect(v.plan.map(r => r.icon)).toEqual(['✅', '❌', '⬜'])
+  })
+
+  test('a blocked step with a dated note leaves the rest of a 14-step plan unshifted', () => {
+    const steps = Array.from({ length: 14 }, (_, i) => `### Step ${i + 1}: s${i + 1}\n- **Action**: Do ${i + 1}.\n- **Files**: \`src/f${i + 1}.ts\` — modify\n`)
+    const status = '**Steps completed**: 10 of 14\n**Blocked steps**: 10 (k3d functional check — Maxwell silent since 2026-10-23)\n'
+    const md = `# Issue: x\n\n## Implementation Plan\n\n**Mode**: Regular\n\n${steps.join('\n')}\n## Implementation Status\n\n${status}`
+    const v = deriveView(parseScratchpad(md), [], null)
+
+    expect(v.plan.map(r => r.icon)).toEqual([...Array(9).fill('✅'), '❌', '✅', '⬜', '⬜', '⬜'])
+  })
+
   test('a leading ./ on a file does not hide an edit', () => {
     const md = mid.replace('`src/router.ts`', '`./src/router.ts`')
     const v = deriveView(parseScratchpad(md), ['src/router.ts'], null)

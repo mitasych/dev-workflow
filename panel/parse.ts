@@ -81,6 +81,18 @@ const field = (lines: readonly string[], name: string): string | null => {
   return null
 }
 
+// Only the leading list names steps: a note after it can hold dates, versions or names with digits.
+// Each item may repeat the word: "Steps: 3", "step 3, step 5", "#3"; "3, 5, and 7" is one list.
+// Every `\s*` is followed by a non-space token, so a run of spaces splits one way only.
+const BLOCKED_ITEM = String.raw`\s*(?:(?:steps?|cycles?)\b:?\s*)?(?:#\s*)?\d+`
+const BLOCKED_LIST = new RegExp(
+  String.raw`^(${BLOCKED_ITEM}(?:\s*(?:,(?:\s*and\b)?|&|\band\b)${BLOCKED_ITEM})*)`,
+  'i',
+)
+
+const blockedSteps = (text: string): number[] =>
+  /^none/i.test(text) ? [] : (BLOCKED_LIST.exec(text)?.[1]?.match(/\d+/g) ?? []).map(Number)
+
 const lastOf = (sections: readonly Section[], heading: string): Section | undefined =>
   [...sections].reverse().find(s => startsWithHeading(s.heading, heading))
 
@@ -132,8 +144,7 @@ const writtenProgress = (sections: readonly Section[]): Written | null => {
     field(found.lines, 'Steps completed') ?? field(found.lines, 'Cycles completed') ?? '',
   )
   if (!counts) return null
-  const blockedText = field(found.lines, 'Blocked steps') ?? ''
-  const blocked = /^none/i.test(blockedText) ? [] : (blockedText.match(/\d+/g) ?? []).map(Number)
+  const blocked = blockedSteps(field(found.lines, 'Blocked steps') ?? '')
   return { done: Number(counts[1]), total: Number(counts[2]), blocked }
 }
 
