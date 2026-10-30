@@ -47,7 +47,7 @@ Check each category and assess whether the changes impact it:
   ```
   Example:
   ```
-  ## [2.0.0] - 2026-05-14 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+  ## [2.0.0] - 2026-05-14 Aleksandr Mitasov <mitasych@gmail.com>
   ```
 - Follow the existing changelog format (Keep a Changelog, custom, etc.)
 - Classify: Added / Changed / Fixed / Deprecated / Removed / Security

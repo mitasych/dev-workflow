@@ -14,13 +14,11 @@ The repository is its own marketplace (`.claude-plugin/marketplace.json`). At th
 terminal session:
 
 ```
-/plugin install dev-workflow --marketplace https://gitlab.wiz-team.com/ai-tools/dev-workflow.git
+/plugin install dev-workflow --marketplace https://github.com/mitasych/dev-workflow.git
 ```
 
 Answer `y` to add the marketplace, then pick a scope (user is the default). From a shell, the same
-line is `claude plugin install dev-workflow --marketplace <url>`. With an SSH key rather than an
-HTTPS credential, use `ssh://git@gitlab.wiz-team.com:2233/ai-tools/dev-workflow.git`. The install
-never prompts for a credential, so the machine must already hold one for that host.
+line is `claude plugin install dev-workflow --marketplace <url>`.
 
 It then loads as **`dev-workflow@dev-workflow`** from the copy the install made.
 
@@ -60,7 +58,7 @@ differs between clients.
 Those clients read `~/.agents/skills/`, not `~/.claude/skills/`. Install there directly:
 
 ```bash
-git clone ssh://git@gitlab.wiz-team.com:2233/ai-tools/dev-workflow.git ~/.agents/skills/dev-workflow
+git clone https://github.com/mitasych/dev-workflow.git ~/.agents/skills/dev-workflow
 ```
 
 Or, if you already run it in Claude Code, symlink that copy instead of cloning a second one —

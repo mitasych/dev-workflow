@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.13.1] - 2026-10-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.13.1] - 2026-10-26 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Fixed
 
@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the scratchpad state. The band now draws on top and keeps the other mod's line under it. A mod
   that loads above this one and draws its band without keeping what is beneath it can still hide it.
 
-## [1.13.0] - 2026-10-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.13.0] - 2026-10-26 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A session already running 1.12.0 starts its spend ledger afresh after updating: the stored ledger
   gained fields, so it is read as empty and seeded again from what the session has cost so far.
 
-## [1.12.0] - 2026-10-24 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.12.0] - 2026-10-24 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   between a switch and its request no longer loses the pending measurement. A switch measured after
   `showSwitchCost` goes off is dropped instead of shown.
 
-## [1.11.0] - 2026-10-24 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.11.0] - 2026-10-24 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -72,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Four skills (`workflow-clarify`, `workflow-plan`, `workflow-learn`, `learn-code`) carry a new
   `multi-turn: true` frontmatter key, which the panel mod reads; other clients ignore it.
 
-## [1.10.3] - 2026-10-21 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.10.3] - 2026-10-21 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Fixed
 
@@ -93,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/workflow-review` keeps a criterion marked `[x]` from a `## Test Status` written after the latest
   review, unless the code shows a defect the tests missed; an older one is reassessed.
 
-## [1.10.2] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.10.2] - 2026-10-19 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -104,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `version` bump, and auto-update is off by default for this marketplace — and that an installed
   copy takes precedence over a skills-directory one.
 
-## [1.10.1] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.10.1] - 2026-10-19 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Fixed
 
@@ -112,7 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unverified or open — instead of copying its checkbox marker, which Jira's wiki markup would read
   as a link (`[!]`) or a user mention (`[~]`).
 
-## [1.10.0] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.10.0] - 2026-10-19 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -137,7 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged.
 - Inline, plan-step briefs give way sooner when the review and criteria lists need the room.
 
-## [1.9.0] - 2026-10-19 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.9.0] - 2026-10-19 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -166,7 +166,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/workflow-status` named `/release` in its step table, a command that does not exist; it now
   reads `/workflow-release`.
 
-## [1.8.0] - 2026-08-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.8.0] - 2026-08-26 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -196,7 +196,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stale skill counts in the README — 18 skills and 17 `/workflow-*` commands, with the Layout
   block's breakdown corrected to 15 workflow steps + 2 commit helpers + `learn-code`.
 
-## [1.7.3] - 2026-08-26 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.7.3] - 2026-08-26 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -227,7 +227,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin description no longer claims every step is an explicit `/workflow-*` skill, which
   stopped being true once branch creation could be offered automatically.
 
-## [1.7.2] - 2026-08-22 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.7.2] - 2026-08-22 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 
@@ -243,7 +243,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/workflow-release` now checks tag availability in section 6, ahead of the approval gate,
   instead of after the commit — so it can no longer offer a tag it is about to fail to create.
 
-## [1.7.1] - 2026-08-21 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+## [1.7.1] - 2026-08-21 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Added
 

@@ -188,7 +188,7 @@ after the initial commit will never reach the message.
   Example heading:
   
   ```
-  ## [2.0.0] - 2026-05-14 Aleksandr Mitasov <oleksandr.mitasov@wiz-team.com>
+  ## [2.0.0] - 2026-05-14 Aleksandr Mitasov <mitasych@gmail.com>
   ```
   
   The inline author is **mandatory** — it must appear on the same line as the version and date in every release entry. Do **not** emit a separate `**Author**:` line below the heading.

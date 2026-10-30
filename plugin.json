@@ -9,5 +9,5 @@
   },
   "license": "MIT",
   "keywords": ["workflow", "tdd", "planning", "code-review", "release"],
-  "repository": "https://gitlab.wiz-team.com/ai-tools/dev-workflow"
+  "repository": "https://github.com/mitasych/dev-workflow"
 }

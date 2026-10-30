@@ -6,9 +6,9 @@ details and hostnames are replaced before they land here. To regenerate from the
 python3 - <<'PY'
 import json
 REPL = [('mitasych@gmail.com', 'author@example.com'),
-        ('oleksandr.mitasov@wiz-team.com', 'author@example.com'),
-        ('git@gitlab.wiz-team.com', 'git@git.example.com'),
-        ('gitlab.wiz-team.com', 'git.example.com')]
+        ('<work email>', 'author@example.com'),
+        ('git@<work git host>', 'git@git.example.com'),
+        ('<work git host>', 'git.example.com')]
 for key, name in [('DW-2', 'dw2'), ('DW-3', 'dw3'), ('DW-4', 'dw4')]:
     body = open(f'.workflow/{key}-issue.md').read()
     for old, new in REPL:

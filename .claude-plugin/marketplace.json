@@ -1,6 +1,6 @@
 {
   "name": "dev-workflow",
   "description": "The dev-workflow plugin: issue-to-release workflow skills and a live status panel for Claude Code.",
-  "owner": { "name": "Aleksandr Mitasov", "email": "oleksandr.mitasov@wiz-team.com" },
+  "owner": { "name": "Aleksandr Mitasov", "email": "mitasych@gmail.com" },
   "plugins": [{ "name": "dev-workflow", "source": "./" }]
 }
