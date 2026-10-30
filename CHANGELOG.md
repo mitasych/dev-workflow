@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.2] - 2026-10-30 Aleksandr Mitasov <mitasych@gmail.com>
+
+### Fixed
+
+- The workflow panel no longer marks the wrong steps as blocked when a note follows the step numbers
+  in `**Blocked steps**`. It used to read every digit on the line as a step, so
+  `10 (k3d functional check — silent since 2026-10-23)` also blocked step 3 and shifted the ✅ marks
+  after it. Now only the leading list of step numbers counts (`3, 5`, `Steps 3 and 5`, `#3`) and what
+  follows is a note. A value that starts with words rather than numbers reads as nothing blocked.
+
+### Changed
+
+- `/workflow-implement` now asks for `**Blocked steps**` as comma-separated step numbers, or `none`,
+  with the reason under `### Issues Encountered`.
+
 ## [1.13.1] - 2026-10-26 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Fixed
