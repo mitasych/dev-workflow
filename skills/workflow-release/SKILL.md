@@ -12,7 +12,7 @@ disable-model-invocation: true
 You are performing the final step of the development workflow: **Commit & Tag**.
 This follows a **single-commit + amend flow** to keep the release as one clean commit.
 
-All commits should be without `Co-Authored-By` or `Made-with`
+Never add a `Made-with` line. A `Co-authored-by` line only as section 3 Step 4 asks.
 
 ## Input
 
@@ -148,6 +148,23 @@ happened, not what it was. This skill deliberately has no `--breaking` flag: the
 carries the decision, and a flag able to contradict it would be a second source of truth. In house style there is no `!` and no footer; the version number
 carries the signal alone.
 
+**Co-authored-by.** Before composing, ask:
+
+`Add a Co-authored-by line for the agent? (y/N)`
+
+- **No** (the default) → no `Co-authored-by` line, even when the harness asks for one.
+- **Yes** → end the message with one trailer naming the agent family, not the model: take the
+  attribution line the agent uses for commits and drop the model name and version —
+  `Co-authored-by: Claude <noreply@anthropic.com>`, never `Claude <model> <version> <…>`.
+  An attribution line that names no model (custom text, another agent's form) is used
+  unchanged. The committing model is often not the one that wrote the change, so a model name
+  would credit the wrong one. The trailer is the last paragraph, after any `BREAKING CHANGE:`
+  footer, separated by a blank line. Pass each paragraph to `git commit` as its own `-m`.
+- If the agent has no attribution line of its own, skip the question and say so in the
+  summary. Never invent a name or address.
+
+Ask every time, and record nothing, the same as the convention prompt.
+
 **Assemble the final message now, before section 6 commits anything.** Section 6 amends with
 `git commit --amend --no-edit`, which reuses the subject verbatim — a `!` or a footer decided
 after the initial commit will never reach the message.
@@ -213,7 +230,7 @@ Then show exactly what is about to happen, and wait for an answer:
 ```
 Proposed commit message:
 
-  <the message assembled in section 3, including any BREAKING CHANGE: footer>
+  <the message assembled in section 3, including any BREAKING CHANGE: footer and Co-authored-by trailer>
 
 Style:  <conventional | house> — <how it was decided>
 Staged: <n> file(s)
@@ -245,14 +262,14 @@ Commit all release-related files (changelog, docs, etc.) in a single commit:
 
 ```bash
 git add CHANGELOG.md
-git commit -m "<assembled commit message>"
+git commit -m "<subject>" [-m "<BREAKING CHANGE: footer>"] [-m "<Co-authored-by trailer>"]
 ```
 
 If there are other documentation files updated by `/document` that haven't been committed yet, include them:
 
 ```bash
 git add CHANGELOG.md README.md docs/
-git commit -m "<assembled commit message>"
+git commit -m "<subject>" [-m "<BREAKING CHANGE: footer>"] [-m "<Co-authored-by trailer>"]
 ```
 
 #### Step 3 — Review and amend
@@ -297,7 +314,7 @@ git tag -a <version> -m "v_<version>"
   ### Commit
   ```
 
-- `<sha short>` — <assembled commit message> (tagged <version>)
+- `<sha short>` — <commit subject> (tagged <version>)
   
   ```
   Create a `.gitignore` file within the `.workflow` directory containing a single line `*`, if such a file does not already exist.

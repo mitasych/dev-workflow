@@ -131,7 +131,7 @@ In Claude Code, a band above the prompt shows it live;
 
   /workflow-commit [--push] [--dry-run] [--breaking] [desc]
                       Stage + single-line commit carrying the
-                      branch Task ID. Never adds Co-authored-by.
+                      branch Task ID. Asks before adding Co-authored-by.
   /workflow-commit-dev [--push] [--dry-run] [--breaking]
                       Commit using VERSION from .version and tag
                       dev-{version} (dev-rc{n}-{version} on RC or

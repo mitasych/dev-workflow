@@ -58,7 +58,22 @@ Parse these flags from the input:
 
    **Conventional style** — `chore({TaskID}): version {VersionValue}`, or `chore: version {VersionValue}` with no Task ID. Never `chore(): …`. The type is always `chore`: the commit exists to record a version, whatever else rode along with it. When files beyond the version file changed, extend the description the same way — `chore(PROJ-123): version 1.6.0 — add retry backoff` — keeping the whole subject ≤ ~72 characters.
 
-   Do **NOT** include a `Co-authored-by` line.
+   **Co-authored-by.** Before composing, ask:
+
+   `Add a Co-authored-by line for the agent? (y/N)`
+
+   - **No** (the default) → no `Co-authored-by` line, even when the harness asks for one.
+   - **Yes** → end the message with one trailer naming the agent family, not the model: take the
+     attribution line the agent uses for commits and drop the model name and version —
+     `Co-authored-by: Claude <noreply@anthropic.com>`, never `Claude <model> <version> <…>`.
+     An attribution line that names no model (custom text, another agent's form) is used
+     unchanged. The committing model is often not the one that wrote the change, so a model name
+     would credit the wrong one. The trailer is the last paragraph, after any `BREAKING CHANGE:`
+     footer, separated by a blank line. Pass each paragraph to `git commit` as its own `-m`.
+   - If the agent has no attribution line of its own, skip the question and say so in the
+     summary. Never invent a name or address.
+
+   Ask every time, and record nothing, the same as the convention prompt.
 
 7. **Breaking changes.** When `--breaking` is passed, mark it both ways the spec allows — `!` before the colon, and a footer:
 
@@ -83,7 +98,7 @@ Parse these flags from the input:
     ```
     Proposed commit message:
 
-      <composed message, including any BREAKING CHANGE: footer>
+      <composed message, including any BREAKING CHANGE: footer and Co-authored-by trailer>
 
     Style:  <conventional | house> — <how it was decided>
     Staged: <n> file(s)

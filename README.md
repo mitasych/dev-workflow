@@ -108,7 +108,7 @@ skills use `disable-model-invocation` — and dropping it would let an agent fir
 
 ### Commit helpers
 Lightweight companions to `/workflow-release`. Both support `--push`, `--dry-run`, and
-`--breaking`, and never add a `Co-authored-by` line.
+`--breaking`, and ask before adding a `Co-authored-by` line.
 - `/workflow-commit [--push] [--dry-run] [--breaking] [description]` — stage + single-line commit carrying the branch's Task ID
 - `/workflow-commit-dev [--push] [--dry-run] [--breaking]` — commit using `VERSION` from `.version`, then create a `dev-{version}` tag (`dev-rc{n}-{version}` on `RC-*`/`test-RC-*` branches)
 
@@ -117,6 +117,11 @@ read the repo's convention before composing: a commitlint config first, then rec
 subjects. Where Conventional Commits is in use the Task ID becomes the scope
 (`feat(PROJ-123): add retry backoff`); otherwise it stays a prefix (`PROJ-123: Add retry
 backoff`). When neither signal is present they ask — every time, recording nothing.
+
+**Co-authored-by.** All three also ask whether to credit the agent with a `Co-authored-by` trailer
+— every time, default no, recording nothing. A yes adds one trailer naming the agent family
+(`Co-authored-by: Claude <noreply@anthropic.com>`), never the model, as the message's last paragraph.
+`/workflow-release` never adds `Made-with`.
 
 **Nothing commits unapproved.** All three then show you the composed message — along with the
 tag and push target where those apply — and wait for `yes` / `edit` / `no`. An `edit` is taken
