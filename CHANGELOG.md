@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-11-02 Aleksandr Mitasov <mitasych@gmail.com>
+
+### Added
+
+- `/workflow-commit`, `/workflow-commit-dev` and `/workflow-release` now ask whether to credit the
+  agent with a `Co-authored-by` line: `Add a Co-authored-by line for the agent? (y/N)`. They used to
+  forbid the line outright. The default is no, so answering nothing gives the message you got before,
+  even when the harness asks the agent to add one. A yes adds one trailer naming the agent family,
+  never the model (`Co-authored-by: Claude <noreply@anthropic.com>`), as the message's last paragraph,
+  after any `BREAKING CHANGE:` footer. The question comes before the message is composed, so
+  `--dry-run` and the approval gate show the real message. Nothing records the answer, and
+  `/workflow-release` still never adds `Made-with`.
+
+### Fixed
+
+- The changelog heading that `/workflow-document` and `/workflow-release` write no longer wraps your
+  email in backslashes. Their templates escaped the angle brackets around the email and the agent
+  copied the backslashes into `CHANGELOG.md`; the escapes are gone from both, and the entry comes out
+  as `Name <email>`. Entries already written with backslashes are not rewritten.
+
 ## [1.13.2] - 2026-10-30 Aleksandr Mitasov <mitasych@gmail.com>
 
 ### Fixed
