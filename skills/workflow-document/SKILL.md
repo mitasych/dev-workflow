@@ -43,7 +43,7 @@ Check each category and assess whether the changes impact it:
 - Draft an entry for this change under an `[Unreleased]` section
 - Format the heading so the author follows the version + date inline:
   ```
-  ## [Unreleased] - <YYYY-MM-DD> <git user.name> \<<git user.email>\>
+  ## [Unreleased] - <YYYY-MM-DD> <git user.name> <<git user.email>>
   ```
   Example:
   ```

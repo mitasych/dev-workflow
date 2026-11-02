@@ -197,7 +197,7 @@ after the initial commit will never reach the message.
   Update CHANGELOG.md:
   
   ```markdown
-  ## [<version>] - <YYYY-MM-DD> <git user.name> \<<git user.email>\>
+  ## [<version>] - <YYYY-MM-DD> <git user.name> <<git user.email>>
   
   ### <Category>
   ```
